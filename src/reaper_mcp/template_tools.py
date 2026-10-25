@@ -19,7 +19,9 @@ import difflib
 from pathlib import Path
 from typing import Any
 
+from reaper_mcp.guids import pointer_guid
 from reaper_mcp.reaper import RPR, ensure_connected, get_project
+from reaper_mcp.undo import describe, edits, read_only
 
 TEMPLATE_SUFFIX = ".rtracktemplate"
 
@@ -149,9 +151,10 @@ def resolve_template(name: str, template_dir: Path) -> Path:
 
 def _all_track_guids() -> list[str]:
     count = int(RPR.CountTracks(0))
-    return [RPR.GetTrackGUID(RPR.GetTrack(0, i)) for i in range(count)]
+    return [pointer_guid(RPR.GetTrack(0, i)) for i in range(count)]
 
 
+@read_only
 def list_track_templates() -> dict:
     """
     List the track templates (.RTrackTemplate files) in REAPER's TrackTemplates folder,
@@ -169,6 +172,7 @@ def list_track_templates() -> dict:
         "templates": templates,
     }
 
+@edits()
 def insert_track_template(*, template: str, position: int | None = None) -> dict:
     """
     Insert a saved track template into the current project, exactly like REAPER's own
@@ -213,25 +217,19 @@ def insert_track_template(*, template: str, position: int | None = None) -> dict
 
 
 def _open_and_place(path: Path, before: list[str], position: int) -> set[str]:
-    """Insert the template as one undo step and move its tracks to position.
+    """Insert the template and move its tracks to position, as one undo step
+    (the server wraps the tool in it) named after the template.
 
     Returns the GUIDs of the inserted tracks (empty when REAPER inserted none).
     """
-    RPR.Undo_BeginBlock2(0)
-    RPR.PreventUIRefresh(1)
-    try:
-        RPR.Main_openProject(str(path))
-        after = _all_track_guids()
-        known = set(before)
-        inserted = [i for i, guid in enumerate(after) if guid not in known]
-        if inserted:
-            _move_inserted(inserted, position)
-        return {after[i] for i in inserted}
-    finally:
-        RPR.PreventUIRefresh(-1)
-        RPR.Undo_EndBlock2(0, f"Insert track template: {path.stem}", -1)
-        RPR.TrackList_AdjustWindows(False)
-        RPR.UpdateArrange()
+    describe(f"Insert track template: {path.stem}")
+    RPR.Main_openProject(str(path))
+    after = _all_track_guids()
+    known = set(before)
+    inserted = [i for i, guid in enumerate(after) if guid not in known]
+    if inserted:
+        _move_inserted(inserted, position)
+    return {after[i] for i in inserted}
 
 
 def _move_inserted(inserted: list[int], position: int) -> None:
@@ -256,7 +254,7 @@ def _move_inserted(inserted: list[int], position: int) -> None:
 def _tracks_with_guids(guids: set[str]) -> list[dict]:
     project = get_project()
     return [
-        {"index": i, "name": project.tracks[i].name}
+        {"index": i, "guid": guid, "name": project.tracks[i].name}
         for i, guid in enumerate(_all_track_guids())
         if guid in guids
     ]

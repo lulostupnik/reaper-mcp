@@ -18,6 +18,10 @@ if TYPE_CHECKING:
 # Presets each fake plugin ships with.
 PRESETS = {"ReaEQ": ["Bright", "Warm"], "ReaComp": ["Gentle"], "ReaLimit": [], "ReaSynth": []}
 
+# REAPER's values for track settings a new track's info dict leaves out.
+TRACK_DEFAULTS = {"I_RECARM": 0.0, "I_RECINPUT": 0.0, "I_RECMON": 0.0, "B_MAINSEND": 1.0,
+                  "I_FOLDERDEPTH": 0.0}
+
 # The plugins the fake REAPER has installed; anything else is "not found".
 INSTALLED_FX = {
     "ReaEQ": ["Gain-Low", "Freq-Low", "Gain-High"],
@@ -58,6 +62,11 @@ class ItemState:
     take_info: dict[str, float] = field(
         default_factory=lambda: {"D_STARTOFFS": 0.0, "D_PITCH": 0.0, "D_PLAYRATE": 1.0}
     )
+    selected: bool = False
+
+    @property
+    def guid(self) -> str:
+        return "{" + self.pointer[-8:] + "-1111-1111-1111-111111111111}"
 
 
 @dataclass
@@ -84,6 +93,10 @@ class TrackState:
     @property
     def guid(self) -> str:
         return "{" + self.pointer[-8:] + "-0000-0000-0000-000000000000}"
+
+    def value(self, param: str) -> float:
+        """A setting as REAPER reads it: set ones from info, the rest at REAPER's default."""
+        return self.info[param] if param in self.info else TRACK_DEFAULTS[param]
 
 
 class FakeFXParam(float):
@@ -301,7 +314,7 @@ class FakeTrack:
         """See solo()."""
 
     def get_info_value(self, param: str) -> float:
-        return self._state.info[param]
+        return self._state.value(param)
 
     def set_info_value(self, param: str, value: float) -> None:
         self._state.info[param] = value

@@ -1,5 +1,6 @@
 import functools
 import inspect
+import json
 import logging
 import threading
 from collections.abc import Callable
@@ -10,6 +11,7 @@ from mcp.server import MCPServer
 from reaper_mcp import (
     analysis_tools,
     audio_tools,
+    context_tools,
     fx_tools,
     mastering_tools,
     midi_tools,
@@ -19,7 +21,9 @@ from reaper_mcp import (
     render_tools,
     template_tools,
     track_tools,
+    undo_tools,
 )
+from reaper_mcp.undo import as_undo_step, kind_of
 
 logger = logging.getLogger("reaper_mcp.server")
 
@@ -64,6 +68,8 @@ def _serialized(fn: Callable[..., dict]) -> Callable[..., dict]:
 mcp = _server
 
 for _module in (
+    context_tools,
+    undo_tools,
     project_tools,
     track_tools,
     midi_tools,
@@ -78,4 +84,18 @@ for _module in (
 ):
     for _tool in _module.TOOLS:
         # cleandoc: the SDK sends the docstring verbatim, source indentation included.
-        _server.tool(description=inspect.cleandoc(_tool.__doc__ or ""))(_serialized(_tool))
+        # Project-changing tools run as one named undo step, inside the lock.
+        _server.tool(
+            description=inspect.cleandoc(_tool.__doc__ or ""),
+            annotations=kind_of(_tool).annotations,
+        )(_serialized(as_undo_step(_tool)))
+
+
+@_server.resource(
+    "reaper://project/summary",
+    name="project_summary",
+    description="The current REAPER project at a glance; the same as get_project_summary.",
+    mime_type="application/json",
+)
+def project_summary_resource() -> str:
+    return json.dumps(_serialized(context_tools.get_project_summary)())

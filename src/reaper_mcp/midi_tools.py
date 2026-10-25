@@ -1,5 +1,6 @@
 
 from reaper_mcp.reaper import get_project
+from reaper_mcp.undo import edits
 
 # GM standard drum MIDI notes
 DRUM_MAPPINGS = {
@@ -53,6 +54,7 @@ def _parse_chord(chord_str: str):
     return intervals, root_num
 
 
+@edits()
 def create_midi_item(*, track_index: int, start_position: float, length: float) -> dict:
     """Create an empty MIDI item on a track. Returns item_id for use with add_midi_note."""
     project = get_project()
@@ -67,6 +69,7 @@ def create_midi_item(*, track_index: int, start_position: float, length: float) 
         "track_index": track_index,
     }
 
+@edits()
 def add_midi_note(
     *,
     track_index: int,
@@ -118,6 +121,7 @@ def _add_chord(take, chord_str: str, *, start: float, length: float) -> None:
         )
 
 
+@edits()
 def create_chord_progression(
     *,
     track_index: int,
@@ -153,6 +157,7 @@ def create_chord_progression(
         "total_length": total_length,
     }
 
+@edits()
 def create_drum_pattern(
     *,
     track_index: int,

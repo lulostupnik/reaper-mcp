@@ -1,6 +1,7 @@
 """Characterization tests for fx_tools, run end to end against the fake REAPER."""
 
 from tests.fake_reaper.objects import FXState
+from tests.helpers import assert_no_track
 
 
 def _fx_track(reaper):
@@ -35,7 +36,7 @@ def test_add_fx_missing_plugin(reaper, call):
 
 def test_add_fx_bad_track(reaper, call):
     result = call("add_fx", track_index=0, fx_name="ReaEQ")
-    assert result == {"success": False, "error": "list index out of range"}
+    assert_no_track(result)
 
 
 # remove_fx
@@ -57,7 +58,7 @@ def test_remove_fx_bad_index(reaper, call):
 
 def test_remove_fx_bad_track(reaper, call):
     result = call("remove_fx", track_index=0, fx_index=0)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert_no_track(result)
 
 
 # set_fx_parameter

@@ -4,6 +4,7 @@ import pytest
 
 from reaper_mcp.mixing_tools import create_send
 from reaper_mcp.units import db_to_linear as _db_to_linear
+from tests.helpers import assert_no_track
 
 OUT_OF_RANGE = "list index out of range"
 
@@ -54,7 +55,7 @@ def test_add_volume_automation_shows_a_missing_envelope_and_keeps_the_selection(
 def test_add_volume_automation_bad_track(reaper, call):
     reaper.add_track("A")
     result = call("add_volume_automation", track_index=3, position=1.0, value_db=0.0)
-    assert result == {"success": False, "error": OUT_OF_RANGE}
+    assert_no_track(result)
 
 
 # add_pan_automation
@@ -88,7 +89,7 @@ def test_add_pan_automation_shows_a_missing_envelope(reaper, call):
 
 def test_add_pan_automation_bad_track(reaper, call):
     result = call("add_pan_automation", track_index=0, position=1.0, pan=0.0)
-    assert result == {"success": False, "error": OUT_OF_RANGE}
+    assert_no_track(result)
 
 
 # create_send
@@ -132,14 +133,14 @@ def test_create_send_sets_volume_and_indexes_sequentially(reaper, call):
 def test_create_send_bad_dest_creates_nothing(reaper, call):
     src = reaper.add_track("Src")
     result = call("create_send", source_track_index=0, dest_track_index=5)
-    assert result == {"success": False, "error": OUT_OF_RANGE}
+    assert_no_track(result)
     assert src.sends == []
 
 
 def test_create_send_bad_source(reaper, call):
     reaper.add_track("Dst")
     result = call("create_send", source_track_index=5, dest_track_index=0)
-    assert result == {"success": False, "error": OUT_OF_RANGE}
+    assert_no_track(result)
 
 
 # list_sends
@@ -147,25 +148,35 @@ def test_create_send_bad_source(reaper, call):
 
 def test_list_sends_reports_each_send(reaper, call):
     src = reaper.add_track("Src")
-    reaper.add_track("A")
-    reaper.add_track("B")
+    a = reaper.add_track("A")
+    b = reaper.add_track("B")
     call("create_send", source_track_index=0, dest_track_index=1, volume_db=-6.0)
     call("create_send", source_track_index=0, dest_track_index=2)
     src.sends[1].pan = 0.25
     src.sends[1].muted = True
     result = call("list_sends", track_index=0)
     assert result["success"] is True
-    assert result["track_index"] == 0
+    assert (result["track_index"], result["guid"]) == (0, src.guid)
     first, second = result["sends"]
-    assert first["send_index"] == 0
-    assert first["volume_linear"] == pytest.approx(_db_to_linear(-6.0))
-    assert (first["pan"], first["muted"]) == (0.0, False)
-    assert second == {"send_index": 1, "volume_linear": 1.0, "pan": 0.25, "muted": True}
+    assert first == {"send_index": 0, "dest_track_index": 1, "dest_track_guid": a.guid,
+                     "dest_track_name": "A", "volume_db": -6.0, "pan": 0.0, "muted": False}
+    assert second == {"send_index": 1, "dest_track_index": 2, "dest_track_guid": b.guid,
+                      "dest_track_name": "B", "volume_db": 0.0, "pan": 0.25, "muted": True}
+
+
+def test_list_sends_silent_send_reads_as_the_floor(reaper, call):
+    src = reaper.add_track("Src")
+    reaper.add_track("A")
+    call("create_send", source_track_index=0, dest_track_index=1)
+    src.sends[0].volume = 0.0
+    [send] = call("list_sends", track_index=0)["sends"]
+    assert send["volume_db"] == -150.0
 
 
 def test_list_sends_none(reaper, call):
-    reaper.add_track("A")
-    assert call("list_sends", track_index=0) == {"success": True, "track_index": 0, "sends": []}
+    a = reaper.add_track("A")
+    assert call("list_sends", track_index=0) == {"success": True, "track_index": 0,
+                                                 "guid": a.guid, "sends": []}
 
 
 def test_list_sends_bad_track(reaper, call):
@@ -189,7 +200,7 @@ def test_remove_send_removes_by_index(reaper, call):
 
 def test_remove_send_bad_track(reaper, call):
     result = call("remove_send", source_track_index=2, send_index=0)
-    assert result == {"success": False, "error": OUT_OF_RANGE}
+    assert_no_track(result)
 
 
 # set_send_volume
@@ -219,43 +230,7 @@ def test_set_send_volume_floor_is_silence(reaper, call):
 
 def test_set_send_volume_bad_track(reaper, call):
     result = call("set_send_volume", source_track_index=0, send_index=0, volume_db=0.0)
-    assert result == {"success": False, "error": OUT_OF_RANGE}
-
-
-# create_bus
-
-
-def test_create_bus_appends_track_and_routes(reaper, call):
-    kick = reaper.add_track("Kick")
-    snare = reaper.add_track("Snare")
-    reaper.add_track("Vox")
-    result = call("create_bus", name="Drums", track_indices=[0, 1])
-    assert result == {
-        "success": True,
-        "bus_index": 3,
-        "bus_name": "Drums",
-        "sends": [{"track_index": 0, "send_index": 0}, {"track_index": 1, "send_index": 0}],
-    }
-    assert [t.name for t in reaper.tracks] == ["Kick", "Snare", "Vox", "Drums"]
-    bus = reaper.tracks[3]
-    assert [s.dest for s in kick.sends] == [bus.pointer]
-    assert [s.dest for s in snare.sends] == [bus.pointer]
-    assert reaper.tracks[2].sends == []
-    assert bus.sends == []
-
-
-def test_create_bus_no_sources(reaper, call):
-    result = call("create_bus", name="Empty", track_indices=[])
-    assert result == {"success": True, "bus_index": 0, "bus_name": "Empty", "sends": []}
-    assert [t.name for t in reaper.tracks] == ["Empty"]
-
-
-def test_create_bus_bad_index_changes_nothing(reaper, call):
-    kick = reaper.add_track("Kick")
-    result = call("create_bus", name="Drums", track_indices=[0, 7])
-    assert result == {"success": False, "error": OUT_OF_RANGE}
-    assert [t.name for t in reaper.tracks] == ["Kick"]
-    assert kick.sends == []
+    assert_no_track(result)
 
 
 def test_remove_send_bad_send_index(reaper, call):

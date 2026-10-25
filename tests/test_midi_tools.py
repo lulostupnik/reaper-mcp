@@ -5,6 +5,7 @@ import pytest
 from reaper_mcp import midi_tools
 from reaper_mcp.midi_tools import _parse_chord
 from tests.fake_reaper.objects import ItemState, Note
+from tests.helpers import assert_no_track
 
 
 def _midi_item(reaper, call):
@@ -86,7 +87,7 @@ def test_create_midi_item_second_item_index(reaper, call):
 
 def test_create_midi_item_bad_track(reaper, call):
     result = call("create_midi_item", track_index=0, start_position=0.0, length=1.0)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert_no_track(result)
 
 
 # add_midi_note
@@ -135,7 +136,7 @@ def test_add_midi_note_audio_item(reaper, call):
 
 def test_add_midi_note_bad_track(reaper, call):
     result = call("add_midi_note", track_index=2, item_index=0, pitch=60, start=0.0, length=1.0)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert_no_track(result)
 
 
 def test_add_midi_note_bad_item(reaper, call):
@@ -211,7 +212,7 @@ def test_create_chord_progression_zero_tempo(reaper, call):
 
 def test_create_chord_progression_bad_track(reaper, call):
     result = call("create_chord_progression", track_index=0, chords="C", start_position=0.0)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert_no_track(result)
 
 
 # create_drum_pattern
@@ -268,4 +269,4 @@ def test_create_drum_pattern_empty_pattern_creates_nothing(reaper, call):
 
 def test_create_drum_pattern_bad_track(reaper, call):
     result = call("create_drum_pattern", track_index=0, pattern="k", start_position=0.0)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert_no_track(result)

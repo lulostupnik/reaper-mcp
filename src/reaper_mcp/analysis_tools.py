@@ -2,6 +2,8 @@ import os
 
 import numpy as np
 
+from reaper_mcp.undo import read_only
+
 
 def _band_rms_db(D: np.ndarray, freqs: np.ndarray, band: tuple[float, float]) -> float:
     lo, hi = band
@@ -12,6 +14,7 @@ def _band_rms_db(D: np.ndarray, freqs: np.ndarray, band: tuple[float, float]) ->
     return float(10 * np.log10(power + 1e-12))
 
 
+@read_only
 def analyze_frequency_spectrum() -> dict:
     """
     Render the project and analyze frequency band levels.
@@ -53,6 +56,7 @@ def analyze_frequency_spectrum() -> dict:
 
     return {"success": True, "frequency_bands": results}
 
+@read_only
 def detect_clipping() -> dict:
     """
     Render the project and detect digital clipping (samples at or above 0 dBFS).
@@ -84,6 +88,7 @@ def detect_clipping() -> dict:
         "peak_linear": round(peak_linear, 4),
     }
 
+@read_only
 def analyze_dynamics() -> dict:
     """
     Render the project and measure dynamic range: RMS, peak, crest factor,
@@ -127,6 +132,7 @@ def analyze_dynamics() -> dict:
         "dr_score": round(dr, 1),
     }
 
+@read_only
 def analyze_stereo_field() -> dict:
     """
     Render the project and analyze stereo width and mono compatibility.
@@ -169,6 +175,7 @@ def analyze_stereo_field() -> dict:
         ),
     }
 
+@read_only
 def analyze_transients() -> dict:
     """
     Render the project and detect transient events (note attacks, drum hits, etc.).

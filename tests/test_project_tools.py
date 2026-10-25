@@ -11,7 +11,7 @@ NEW_PROJECT_TAB = 41929
 
 def test_create_project_sets_tempo_and_time_signature(reaper, call):
     reaper.add_track("old")
-    result = call("create_project", tempo=90.0, time_signature="7/8")
+    result = call("create_project", tempo=90.0, time_signature="7/8", use_default_template=False)
     assert result["success"] is True
     assert (result["tempo"], result["time_signature"]) == (90.0, "7/8")
     assert reaper.commands == [NEW_PROJECT_TAB]
@@ -23,8 +23,10 @@ def test_create_project_sets_tempo_and_time_signature(reaper, call):
 
 def test_create_project_without_time_signature(reaper, call):
     reaper.add_track("old")
-    result = call("create_project", tempo=100.0, time_signature="", name="Song")
-    assert result == {"success": True, "name": "Song", "tempo": 100.0, "time_signature": ""}
+    result = call("create_project", tempo=100.0, time_signature="", name="Song",
+                  use_default_template=False)
+    assert result == {"success": True, "name": "Song", "from_default_template": False,
+                      "tempo": 100.0, "time_signature": "4/4"}
     assert reaper.commands == [NEW_PROJECT_TAB]
     assert reaper.tracks == []
     assert reaper.bpm == 100.0
@@ -36,31 +38,29 @@ def _stamped(name: str, prefix: str) -> datetime:
     return datetime.strptime(name.removeprefix(prefix), "%Y-%m-%d %H-%M-%S")
 
 
-def test_create_project_default_name(reaper, call):
-    before = datetime.now().replace(microsecond=0)
-    result = call("create_project", time_signature="")
-    assert (result["success"], result["tempo"], result["time_signature"]) == (True, 120.0, "")
-    assert before <= _stamped(result["name"], "New Project ") <= datetime.now()
-
-
 def test_python_defaults_match_the_advertised_ones(reaper, monkeypatch):
     """Called from Python with no arguments, the tools behave as an MCP call
     that leaves the arguments out."""
     monkeypatch.setenv("HOME", str(reaper.tmp))
     monkeypatch.chdir(reaper.tmp)
+    before = datetime.now().replace(microsecond=0)
     result = project_tools.create_project()
-    assert (result["tempo"], result["time_signature"]) == (120.0, "4/4")
-    assert result["name"].startswith("New Project ")
-    assert reaper.tempo_markers == [[0.0, 120.0, 4, 4]]
-    expected = reaper.tmp / "Documents" / "REAPER Projects" / "Test Project.rpp"
-    assert project_tools.save_project() == {"success": True, "project_path": str(expected)}
+    assert (result["tempo"], result["time_signature"], result["name"]) == (120.0, "4/4", "")
+    assert result["from_default_template"] is True
+    assert reaper.tempo_markers == []  # the template's (here REAPER's) own tempo stays
+    saved = project_tools.save_project()
+    folder = reaper.tmp / "Documents" / "REAPER Projects"
+    assert saved["success"] is True
+    name = saved["project_path"][len(f"{folder}/"):-4]
+    assert before <= _stamped(name, "Project ") <= datetime.now()
 
 
 def test_create_project_malformed_time_signature(reaper, call):
     result = call("create_project", tempo=80.0, time_signature="four")
-    assert result["success"] is False
-    assert "invalid literal for int()" in result["error"]
-    assert reaper.bpm == 80.0
+    assert result == {"success": False, "error": "time_signature must look like 4/4 or 6/8, "
+                                                 "not 'four'; no project was created"}
+    assert reaper.commands == []
+    assert reaper.bpm == 120.0
 
 
 def test_save_project_to_a_path(reaper, call, tmp_path):
@@ -70,6 +70,33 @@ def test_save_project_to_a_path(reaper, call, tmp_path):
     }
     assert reaper.saved_paths == [str(target)]
     assert target.is_file()
+
+
+def test_save_project_makes_the_file_the_open_project(reaper, call, tmp_path):
+    reaper.dirty = True
+    target = tmp_path / "song.rpp"
+    call("save_project", project_path=str(target))
+    assert (reaper.project_file, reaper.project_name, reaper.dirty) == (str(target), "song.rpp", False)
+    assert call("get_context")["project_file"] == str(target)
+
+
+def test_save_project_again_updates_the_same_file(reaper, call, tmp_path, monkeypatch):
+    """After a save to a path, saving without one updates that file."""
+    monkeypatch.setenv("HOME", str(reaper.tmp))
+    target = tmp_path / "songs" / "song.rpp"
+    call("save_project", project_path=str(target))
+    assert call("save_project") == {"success": True, "project_path": str(target)}
+    assert reaper.saved_paths == [str(target), str(target)]
+
+
+def test_save_project_reports_a_save_that_did_not_become_the_project(reaper, call, monkeypatch):
+    fake_save = reaper.Main_SaveProjectEx
+    monkeypatch.setattr(reascript_api, "Main_SaveProjectEx",
+                        lambda project, path, options: fake_save(project, path, 0))
+    target = reaper.tmp / "song.rpp"
+    result = call("save_project", project_path=str(target))
+    assert result == {"success": False,
+                      "error": f"REAPER wrote {target}, but the open project is still unsaved"}
 
 
 def test_save_project_default_path(reaper, call, monkeypatch):
@@ -138,6 +165,7 @@ def test_get_project_info_empty(reaper, call):
     assert result == {
         "success": True,
         "name": "Test Project",
+        "project_file": "",
         "path": "/songs",
         "tempo": 120.0,
         "time_signature": "4/4",
@@ -245,3 +273,70 @@ def test_save_project_hands_reaper_an_absolute_path(reaper, call, tmp_path, monk
     monkeypatch.chdir(tmp_path)
     result = call("save_project", project_path="rel.rpp")
     assert result == {"success": True, "project_path": str(tmp_path / "rel.rpp")}
+
+
+def test_save_project_never_replaces_another_project_with_the_same_name(reaper, call, monkeypatch):
+    """Two new projects named "Song": the second save gets its own file."""
+    monkeypatch.setenv("HOME", str(reaper.tmp))
+    folder = reaper.tmp / "Documents" / "REAPER Projects"
+    call("create_project", name="Song")
+    assert call("save_project")["project_path"] == str(folder / "Song.rpp")
+    (folder / "Song.rpp").write_text("first song")
+    call("create_project", name="Song")
+    assert call("save_project")["project_path"] == str(folder / "Song (2).rpp")
+    assert (folder / "Song.rpp").read_text() == "first song"
+    # Saving the second project again updates its own file.
+    assert call("save_project")["project_path"] == str(folder / "Song (2).rpp")
+
+
+def test_save_project_goes_to_the_xdg_documents_folder(reaper, call, monkeypatch):
+    monkeypatch.setenv("HOME", str(reaper.tmp))
+    config = reaper.tmp / ".config"
+    config.mkdir()
+    (config / "user-dirs.dirs").write_text('# comment\nXDG_DOCUMENTS_DIR="$HOME/Documentos"\n')
+    result = call("save_project")
+    expected = reaper.tmp / "Documentos" / "REAPER Projects" / "Test Project.rpp"
+    assert result == {"success": True, "project_path": str(expected)}
+
+
+def test_documents_dir_ignores_a_documents_folder_set_to_home(reaper, monkeypatch):
+    monkeypatch.setenv("HOME", str(reaper.tmp))
+    config = reaper.tmp / ".config"
+    config.mkdir()
+    (config / "user-dirs.dirs").write_text('XDG_DOCUMENTS_DIR="$HOME/"\n')
+    assert project_tools.documents_dir() == reaper.tmp / "Documents"
+
+
+def test_save_project_reports_a_save_that_left_the_project_unsaved(reaper, call, monkeypatch):
+    """Re-saving over an existing file: the file is there either way, so a
+    project still needing a save is the sign REAPER could not write it."""
+    target = reaper.tmp / "song.rpp"
+    call("save_project", project_path=str(target))
+    reaper.dirty = True
+    monkeypatch.setattr(reascript_api, "Main_SaveProjectEx", lambda *_: None)
+    result = call("save_project")
+    assert result["success"] is False
+    assert "could not save" in result["error"]
+
+
+def test_save_project_accepts_a_path_reaper_spells_differently(reaper, call, tmp_path, monkeypatch):
+    fake_save = reaper.Main_SaveProjectEx
+
+    def save_and_respell(project, path, options):
+        fake_save(project, path, options)
+        reaper.project_file = path.replace("/song.rpp", "//song.rpp")
+
+    monkeypatch.setattr(reascript_api, "Main_SaveProjectEx", save_and_respell)
+    target = tmp_path / "song.rpp"
+    assert call("save_project", project_path=str(target)) == {
+        "success": True, "project_path": str(target)}
+
+
+def test_load_project_refuses_while_there_are_unsaved_changes(reaper, call, tmp_path):
+    path = tmp_path / "song.rpp"
+    path.write_text("<REAPER_PROJECT\n>\n")
+    reaper.dirty = True
+    result = call("load_project", project_path=str(path))
+    assert result["success"] is False
+    assert "save_project" in result["error"]
+    assert reaper.opened == []

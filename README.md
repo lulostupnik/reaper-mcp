@@ -56,8 +56,10 @@ about any other password-less web interface it finds and leaves it alone.
   as you inside REAPER, so use it on a computer you don't share.
 - `save_project`, `render_project`, `render_time_selection` and
   `render_stems` refuse to replace an existing file unless called with
-  `overwrite=true` (saving without a path updates the tool's own copy in
-  `~/Documents/REAPER Projects`), and never write through a symlink.
+  `overwrite=true` (saving without a path updates the project's own file; a
+  never-saved project gets a new, unused file name in the documents folder's
+  `REAPER Projects`), and never write through a symlink. `load_project`
+  refuses while the open project has unsaved changes.
   `save_project`/`load_project` only take `.rpp` paths, `import_audio_file`
   only audio/MIDI files, and `insert_track_template` only `.RTrackTemplate`
   files.
@@ -95,7 +97,12 @@ reaper-mcp-server          # start the server
 reaper-mcp-server --debug  # with debug logging
 ```
 
-## Tools (60)
+## Tools (66)
+
+### Context and Undo
+`get_context` `get_project_summary` `undo` `redo` `get_undo_state`
+
+Every tool that changes the project is one named REAPER undo step ("MCP: Set track volume (track_index=0, volume_db=-6)"), so `undo` or Ctrl+Z takes back exactly one tool call; a call that fails is named "(failed)", and a bad track index is refused before any step is made. `undo` and `redo` only act on these "MCP: " steps unless called with `include_manual_steps=true` (so a recorded take is not removed by accident), and never while recording. Tools are annotated as read-only or changing (MCP `readOnlyHint` / `destructiveHint` / `idempotentHint`), list and get tools report track and item GUIDs, and `delete_track`, `remove_fx` and `remove_send` accept a track GUID instead of an index. The project summary is also the resource `reaper://project/summary`.
 
 ### Project Management
 `create_project` `load_project` `save_project` `get_project_info` `set_tempo` `set_time_signature` `set_cursor_position` `play_project` `stop_transport`

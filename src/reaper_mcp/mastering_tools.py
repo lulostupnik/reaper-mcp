@@ -2,6 +2,7 @@ import os
 
 from reaper_mcp.fx_tools import add_plugin, set_param_normalized
 from reaper_mcp.reaper import RPR, get_project
+from reaper_mcp.undo import edits, read_only
 from reaper_mcp.units import db_to_linear, linear_to_db
 
 MASTERING_PRESETS = {
@@ -20,6 +21,7 @@ def _added(fx) -> dict:
     return {"success": True, "fx_index": fx.index, "name": fx.name, "n_params": fx.n_params}
 
 
+@edits()
 def add_master_fx(*, fx_name: str) -> dict:
     """Add an FX plugin to the master track."""
     fx = add_plugin(get_project().master_track, fx_name)
@@ -28,6 +30,7 @@ def add_master_fx(*, fx_name: str) -> dict:
     return _added(fx)
 
 
+@read_only
 def list_master_fx() -> dict:
     """List all FX plugins on the master track."""
     master = get_project().master_track
@@ -39,6 +42,7 @@ def list_master_fx() -> dict:
     return {"success": True, "fx": fx_list}
 
 
+@edits(idempotent=True)
 def set_master_fx_parameter(*, fx_index: int, param_index: int, value: float) -> dict:
     """Set a normalized parameter (0.0–1.0) on a master track FX plugin."""
     param = set_param_normalized(get_project().master_track, fx_index, param_index, value=value)
@@ -55,6 +59,7 @@ def _master_volume_db(master) -> float:
     return round(linear_to_db(master.get_info_value("D_VOL")), 2)
 
 
+@edits(idempotent=True)
 def set_master_volume(*, volume_db: float) -> dict:
     """Set the master track output volume in dB."""
     master = get_project().master_track
@@ -62,6 +67,7 @@ def set_master_volume(*, volume_db: float) -> dict:
     return {"success": True, "volume_db": _master_volume_db(master)}
 
 
+@edits()
 def apply_mastering_chain(*, preset: str = "default") -> dict:
     """
     Add a standard mastering FX chain to the master track.
@@ -112,6 +118,7 @@ def _set_to_display(track, fx, param_name: str, *, target: float) -> str:
     return RPR.TrackFX_GetFormattedParamValue(track.id, fx.index, param_index, "", 64)[4]
 
 
+@edits()
 def apply_limiter(*, threshold_db: float = -0.5, release_db_per_sec: float = 15.0) -> dict:
     """
     Add ReaLimit to the master track and set its threshold and release.
@@ -128,6 +135,7 @@ def apply_limiter(*, threshold_db: float = -0.5, release_db_per_sec: float = 15.
     return {**_added(fx), "threshold": threshold, "release": release}
 
 
+@read_only
 def analyze_loudness() -> dict:
     """
     Render the project to a temp file and measure integrated loudness (LUFS)
@@ -158,6 +166,7 @@ def analyze_loudness() -> dict:
         if os.path.exists(tmp):
             os.unlink(tmp)
 
+@edits()
 def normalize_project(*, target_lufs: float = -14.0) -> dict:
     """
     Measure the project's integrated loudness, then adjust the master volume

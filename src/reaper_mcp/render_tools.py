@@ -23,6 +23,7 @@ import uuid
 from pathlib import Path
 
 from reaper_mcp.reaper import RPR, get_project
+from reaper_mcp.undo import no_undo
 
 # "File: Render project, using the most recent render settings, auto-close
 # render dialog". 41824 is the same without auto-close, which leaves REAPER's
@@ -34,6 +35,9 @@ TIME_SELECTION = 2
 FORMAT_TYPES = {"wav": b"evaw", "flac": b"calf", "mp3": b"l3pm", "ogg": b"vggo"}
 WAV_BIT_DEPTHS = (16, 24, 32)  # 32 renders as float
 SOLO_IN_PLACE = 2
+# The render settings _render changes, saved and restored around temp renders.
+TEMP_RENDER_STRINGS = ("RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT")
+TEMP_RENDER_NUMBERS = ("RENDER_SRATE", "RENDER_CHANNELS", "RENDER_BOUNDSFLAG", "RENDER_ADDTOPROJ")
 
 
 def get_project_string(key: str) -> str:
@@ -45,6 +49,31 @@ def get_project_string(key: str) -> str:
 
 def set_project_string(key: str, value: str) -> None:
     RPR.GetSetProjectInfo_String(0, key, value, True)
+
+
+def save_render_settings(strings: tuple[str, ...], numbers: tuple[str, ...]
+                         ) -> tuple[dict[str, str], dict[str, float]]:
+    """The project's current values of the given render settings."""
+    return ({key: get_project_string(key) for key in strings},
+            {key: RPR.GetSetProjectInfo(0, key, 0.0, False) for key in numbers})
+
+
+def restore_render_settings(strings: dict[str, str], numbers: dict[str, float]) -> list[str]:
+    """Put each setting back on its own, so one failure (say, a client that
+    disconnected during a long render) does not leave the rest unrestored.
+    Returns the failures as "KEY: error"."""
+    errors = []
+    for key, value in strings.items():
+        try:
+            set_project_string(key, value)
+        except Exception as e:
+            errors.append(f"{key}: {e}")
+    for key, number in numbers.items():
+        try:
+            RPR.GetSetProjectInfo(0, key, number, True)
+        except Exception as e:
+            errors.append(f"{key}: {e}")
+    return errors
 
 
 def _format_config(format: str, bit_depth: int) -> str:
@@ -105,11 +134,20 @@ def render_to_temp_file(sample_rate: int = 48000) -> str:
     """
     Render the current project to a temporary WAV file and return its path.
     Used by analysis and mastering tools. Caller is responsible for deleting the file.
+    The project's own render settings are put back afterwards, so analysing
+    changes nothing in the project.
     """
     _require_content(get_project())
     target = Path(tempfile.gettempdir()) / f"reaper-mcp-{uuid.uuid4().hex}.wav"
-    _render(target, format="wav", sample_rate=sample_rate, bit_depth=24, channels=2,
-            bounds=ENTIRE_PROJECT)
+    strings, numbers = save_render_settings(TEMP_RENDER_STRINGS, TEMP_RENDER_NUMBERS)
+    try:
+        _render(target, format="wav", sample_rate=sample_rate, bit_depth=24, channels=2,
+                bounds=ENTIRE_PROJECT)
+    finally:
+        errors = restore_render_settings(strings, numbers)
+    if errors:
+        target.unlink(missing_ok=True)
+        raise RuntimeError("render settings not restored: " + "; ".join(errors))
     return str(target)
 
 
@@ -120,6 +158,7 @@ def _rendered(target: Path) -> dict:
             "file_size_bytes": target.stat().st_size}
 
 
+@no_undo(destructive=True)
 def render_project(
     *,
     output_path: str,
@@ -148,6 +187,7 @@ def render_project(
     return result
 
 
+@no_undo(destructive=True)
 def render_time_selection(  # noqa: PLR0913 -- one argument per render setting
     *,
     output_path: str,
@@ -180,6 +220,7 @@ def render_time_selection(  # noqa: PLR0913 -- one argument per render setting
     return result
 
 
+@no_undo(destructive=True)
 def render_stems(
     *,
     output_directory: str,

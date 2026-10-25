@@ -8,21 +8,24 @@ from pathlib import Path
 from tests.fake_reaper.objects import PRESETS, ItemState, Send, TrackState
 from tests.fake_reaper.project import FakeProject
 from tests.fake_reaper.render import render, render_targets
+from tests.fake_reaper.session import Session
 
 RENDER_PROJECT = 42230
-STRING_PROJECT_INFO = {"RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT"}
+STRING_PROJECT_INFO = {"RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT", "PROJECT_TITLE"}
 NUMERIC_PROJECT_INFO = {
     "RENDER_SRATE", "RENDER_CHANNELS", "RENDER_BOUNDSFLAG", "RENDER_ADDTOPROJ",
     "RENDER_STARTPOS", "RENDER_ENDPOS",
 }
 NEW_PROJECT_TAB = 41929  # New project tab, ignore default template
+NEW_PROJECT_TAB_FROM_TEMPLATE = 40859  # New project tab (from the default template)
+SAVE_AS_PROJECT_FILE = 8  # Main_SaveProjectEx: the file becomes the project's
 TRANSPORT = {1007: "playing", 1013: "recording", 1016: "stopped"}
 # Track: Toggle track volume / pan envelope visible (on the selected tracks).
 SHOW_ENVELOPE = {40406: "Volume", 40407: "Pan"}
 
 
 @dataclass
-class FakeReaper:
+class FakeReaper(Session):
     tmp: Path
     bpm: float = 120.0
     # bpm is in quarter notes, as REAPER displays it. The project-settings time
@@ -45,6 +48,8 @@ class FakeReaper:
     saved_paths: list[str] = field(default_factory=list)
     commands: list[int] = field(default_factory=list)
     renders: list[Path] = field(default_factory=list)
+    # project_info as it was at each render.
+    render_settings: list[dict] = field(default_factory=list)
     # Projects moved behind a new tab: (tracks, markers, regions, tempo markers).
     background_tabs: list[tuple] = field(default_factory=list)
     # Names of the soloed tracks at each render, in render order.
@@ -54,11 +59,14 @@ class FakeReaper:
     signal: list[tuple[float, float]] = field(default_factory=lambda: [(0.5, 440.0), (0.25, 660.0)])
     # Seconds of material in the project; 0 is an empty project.
     length: float = 4.0
+    # Track names the user's default project template gives a new project tab.
+    default_template_tracks: list[str] = field(default_factory=list)
     _pointer: int = 0
 
     def __post_init__(self) -> None:
         self.master = TrackState(self.new_pointer("MediaTrack"), "MASTER")
         self.project = FakeProject(self)
+        self.start_session()
 
     def new_pointer(self, kind: str) -> str:
         self._pointer += 1
@@ -88,14 +96,11 @@ class FakeReaper:
     def Main_OnCommand(self, command: int, flag: int) -> None:
         self.commands.append(command)
         if command == RENDER_PROJECT:
+            self.render_settings.append(dict(self.project_info))
             self.renders.extend(render(self))
             self.render_solos.append([t.name for t in self.tracks if t.info["I_SOLO"]])
-        elif command == NEW_PROJECT_TAB:
-            # The current project moves to a background tab, untouched.
-            self.background_tabs.append(
-                (list(self.tracks), list(self.markers), list(self.regions), list(self.tempo_markers))
-            )
-            self.tracks, self.markers, self.regions, self.tempo_markers = [], [], [], []
+        elif command in (NEW_PROJECT_TAB, NEW_PROJECT_TAB_FROM_TEMPLATE):
+            self._new_tab(from_template=command == NEW_PROJECT_TAB_FROM_TEMPLATE)
         elif command in TRANSPORT:
             self.transport = TRANSPORT[command]
         elif command in SHOW_ENVELOPE:
@@ -103,7 +108,26 @@ class FakeReaper:
                 if state.selected:
                     self.envelopes.setdefault((state.pointer, SHOW_ENVELOPE[command]), [])
 
+    def _new_tab(self, *, from_template: bool) -> None:
+        """The current project moves to a background tab, untouched; the new tab
+        has its own (empty) undo history, no file and no title."""
+        self.background_tabs.append(
+            (list(self.tracks), list(self.markers), list(self.regions), list(self.tempo_markers),
+             self.project_name, self.project_file, list(self.undo_steps))
+        )
+        self.tracks, self.markers, self.regions, self.tempo_markers = [], [], [], []
+        self.project_name, self.project_file, self.dirty = "", "", False
+        self.undo_steps, self.redo_steps = [], []
+        self.project_info.pop("PROJECT_TITLE", None)
+        if from_template:
+            for name in self.default_template_tracks:
+                self.add_track(name)
+
     def Main_openProject(self, path: str) -> None:
+        if path.lower().endswith(".rpp"):
+            if not path.startswith("noprompt:") and self.dirty:
+                raise AssertionError("REAPER would open a modal 'save changes?' dialog")
+            path = path.removeprefix("noprompt:")
         self.opened.append(path)
         if path.lower().endswith(".rtracktemplate"):
             for line in Path(path).read_text().splitlines():
@@ -111,17 +135,11 @@ class FakeReaper:
                     self.add_track(f"from {Path(path).stem}")
 
     def Main_SaveProjectEx(self, project: int, path: str, options: int) -> None:
+        """Without option 8 REAPER writes a copy and the open project keeps its file."""
         Path(path).write_text("<REAPER_PROJECT 0.1\n>\n")
         self.saved_paths.append(path)
-
-    def Undo_BeginBlock2(self, project: int) -> None:
-        pass
-
-    def Undo_EndBlock2(self, project: int, description: str, flags: int) -> None:
-        pass
-
-    def PreventUIRefresh(self, count: int) -> None:
-        pass
+        if options & SAVE_AS_PROJECT_FILE:
+            self.project_file, self.project_name, self.dirty = path, Path(path).name, False
 
     def TrackList_AdjustWindows(self, is_minor: bool) -> None:
         pass
@@ -225,13 +243,30 @@ class FakeReaper:
         return len(self.tracks)
 
     def GetTrack(self, project: int, index: int) -> str:
+        """REAPER returns a null pointer for an index past the last track."""
+        if not 0 <= index < len(self.tracks):
+            return "(MediaTrack*)0x0000000000000000"
         return self.tracks[index].pointer
 
     def GetTrackGUID(self, track: str) -> str:
-        return self.track(track).guid
+        """REAPER's Python binding hands the GUID* back as a pointer string, an
+        address, not the "{...}" text (reaper_python.py: rpr_unpackp('GUID*', r))."""
+        return "(GUID*)0x" + self.track(track).pointer[-16:]
+
+    def GetSetMediaTrackInfo_String(self, track: str, param: str, value: str, is_set: bool) -> list:
+        state = self.track(track)
+        if is_set and param == "P_NAME":
+            state.name = value
+            return [True, track, param, value, is_set]
+        if is_set or param not in ("GUID", "P_NAME"):
+            return [False, track, param, "", is_set]
+        return [True, track, param, state.guid if param == "GUID" else state.name, is_set]
 
     def DeleteTrack(self, track: str) -> None:
+        """Sends to the deleted track go with it."""
         self.tracks.remove(self.track(track))
+        for state in self.tracks:
+            state.sends = [send for send in state.sends if send.dest != track]
 
     def SetMediaTrackInfo_Value(self, track: str, param: str, value: float) -> bool:
         self.track(track).info[param] = value
@@ -259,9 +294,12 @@ class FakeReaper:
     # Media and FX
 
     def InsertMedia(self, path: str, mode: int) -> int:
+        """REAPER keeps each track's items in time order, so a new item can land
+        anywhere in the list."""
         for state in self.tracks:
             if state.selected:
                 state.items.append(ItemState(self.new_pointer("MediaItem"), self.cursor, 2.0, False))
+                state.items.sort(key=lambda item: item.position)
         return 1
 
     def TrackFX_SetParamNormalized(self, track: str, fx: int, param: int, value: float) -> bool:
@@ -328,7 +366,10 @@ class FakeReaper:
 
     def GetTrackSendInfo_Value(self, track: str, category: int, i: int, param: str) -> float:
         send = self.track(track).sends[i]
-        return {"D_VOL": send.volume, "D_PAN": send.pan, "B_MUTE": float(send.muted)}[param]
+        # REAPER's Python binding returns P_DESTTRACK as the pointer's address, a number.
+        destination = float(int(send.dest.split("0x")[1], 16))
+        return {"D_VOL": send.volume, "D_PAN": send.pan, "B_MUTE": float(send.muted),
+                "P_DESTTRACK": destination}[param]
 
     def SetTrackSendInfo_Value(self, track, category, i, param, value) -> bool:
         sends = self.track(track).sends
@@ -368,5 +409,6 @@ class FakeReaper:
 
 
 RPR_FUNCTIONS = sorted(
-    name for name, value in vars(FakeReaper).items() if name[:1].isupper() and callable(value)
+    name for name in dir(FakeReaper)
+    if name[:1].isupper() and callable(getattr(FakeReaper, name))
 )

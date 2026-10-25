@@ -6,7 +6,9 @@ FXParam.normalized's setter is broken in reapy 0.10, so parameters are set
 through TrackFX_SetParamNormalized.
 """
 
+from reaper_mcp.guids import resolve_track_index
 from reaper_mcp.reaper import RPR, get_project
+from reaper_mcp.undo import edits, read_only
 
 
 def add_plugin(track, fx_name: str):
@@ -24,6 +26,7 @@ def set_param_normalized(track, fx_index: int, param_index: int, *, value: float
     return track.fxs[fx_index].params[param_index]
 
 
+@edits()
 def add_fx(*, track_index: int, fx_name: str) -> dict:
     """
     Add an FX plugin to a track. Works for both instruments (VSTi) and effects (VST/AU).
@@ -44,14 +47,18 @@ def add_fx(*, track_index: int, fx_name: str) -> dict:
     }
 
 
-def remove_fx(*, track_index: int, fx_index: int) -> dict:
-    """Remove an FX plugin from a track by its index."""
-    track = get_project().tracks[track_index]
+@edits(destructive=True)
+def remove_fx(*, track_index: int | str, fx_index: int) -> dict:
+    """Remove an FX plugin from a track by its index.
+    track_index: the track's index, or its GUID from list_tracks (safer: a GUID
+    still names the same track after tracks were added, deleted or moved)."""
+    track_index, track = resolve_track_index(get_project(), track_index)
     fx_name = track.fxs[fx_index].name
     RPR.TrackFX_Delete(track.id, fx_index)
     return {"success": True, "track_index": track_index, "removed": fx_name}
 
 
+@edits(idempotent=True)
 def set_fx_parameter(
     *,
     track_index: int, fx_index: int, param_index: int, value: float
@@ -72,6 +79,7 @@ def set_fx_parameter(
     }
 
 
+@read_only
 def get_fx_parameters(*, track_index: int, fx_index: int) -> dict:
     """Get all parameters for an FX plugin, including names, indices, and current values."""
     fx = get_project().tracks[track_index].fxs[fx_index]
@@ -93,6 +101,7 @@ def get_fx_parameters(*, track_index: int, fx_index: int) -> dict:
     }
 
 
+@read_only
 def list_track_fx(*, track_index: int) -> dict:
     """List all FX plugins on a track."""
     track = get_project().tracks[track_index]
@@ -104,6 +113,7 @@ def list_track_fx(*, track_index: int) -> dict:
     return {"success": True, "track_index": track_index, "fx": fx_list}
 
 
+@edits(idempotent=True)
 def bypass_fx(*, track_index: int, fx_index: int, bypassed: bool) -> dict:
     """Enable or bypass (disable) an FX plugin on a track."""
     track = get_project().tracks[track_index]
@@ -118,6 +128,7 @@ def bypass_fx(*, track_index: int, fx_index: int, bypassed: bool) -> dict:
     }
 
 
+@edits(destructive=True, idempotent=True)
 def load_fx_preset(*, track_index: int, fx_index: int, preset_name: str) -> dict:
     """Load a saved preset by name for an FX plugin."""
     track = get_project().tracks[track_index]

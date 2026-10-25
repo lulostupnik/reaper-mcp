@@ -32,9 +32,15 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture
-def reaper(monkeypatch, tmp_path) -> FakeReaper:
-    """A fake REAPER behind reapy, so the tools run end to end without one."""
-    return install(monkeypatch, tmp_path)
+def reaper(monkeypatch, tmp_path):
+    """A fake REAPER behind reapy, so the tools run end to end without one.
+    Every test also checks that undo blocks and UI-refresh holds were balanced."""
+    fake: FakeReaper = install(monkeypatch, tmp_path)
+    # documents_dir reads XDG's user-dirs.dirs under $HOME, which tests point at tmp.
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    yield fake
+    assert fake.undo_depth == 0, "an undo block was left open"
+    assert fake.ui_refresh_prevented == 0, "PreventUIRefresh was left on"
 
 
 async def _call(name: str, arguments: dict) -> dict:

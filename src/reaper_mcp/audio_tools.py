@@ -1,5 +1,7 @@
+from reaper_mcp.guids import item_guid
 from reaper_mcp.project_tools import absolute_path
 from reaper_mcp.reaper import RPR, get_project
+from reaper_mcp.undo import edits, no_undo
 
 AUDIO_SUFFIXES = frozenset({
     ".wav", ".wave", ".aif", ".aiff", ".flac", ".mp3", ".ogg", ".opus", ".wv", ".m4a",
@@ -7,6 +9,7 @@ AUDIO_SUFFIXES = frozenset({
 })
 
 
+@edits()
 def import_audio_file(*, file_path: str, track_index: int, position: float = 0.0) -> dict:
     """
     Import an audio file onto a track at the given position (seconds).
@@ -21,24 +24,30 @@ def import_audio_file(*, file_path: str, track_index: int, position: float = 0.0
     file_path = str(path)
     project = get_project()
     track = project.tracks[track_index]
+    before = {item_guid(item) for item in track.items}
     # Select only this track, set cursor, then insert media at cursor
     RPR.SetOnlyTrackSelected(track.id)
     project.cursor_position = position
     RPR.InsertMedia(file_path, 0)
-    # Retrieve the item that was just created (last item on the track)
-    track_refreshed = project.tracks[track_index]
-    if track_refreshed.n_items == 0:
-        return {"success": False, "error": "Insert succeeded but no item found on track"}
-    item = track_refreshed.items[track_refreshed.n_items - 1]
+    # REAPER keeps a track's items in time order, so the new item is found by
+    # its GUID, not by its place in the list.
+    new = [(i, item) for i, item in enumerate(project.tracks[track_index].items)
+           if item_guid(item) not in before]
+    if not new:
+        return {"success": False, "error": f"REAPER did not insert {file_path} on the track"}
+    item_index, item = new[0]
     return {
         "success": True,
         "track_index": track_index,
-        "item_index": track_refreshed.n_items - 1,
+        "item_index": item_index,
+        "item_guid": item_guid(item),
         "position": item.position,
         "length": item.length,
         "file_path": file_path,
     }
 
+
+@edits()
 def start_recording(*, track_index: int) -> dict:
     """Arm a track and start recording. Call stop_transport when done."""
     project = get_project()
@@ -51,22 +60,26 @@ def start_recording(*, track_index: int) -> dict:
         "message": "Recording started. Call stop_transport to stop.",
     }
 
+@no_undo(idempotent=True)
 def stop_transport() -> dict:
     """Stop playback or recording."""
     RPR.Main_OnCommand(1016, 0)  # Transport: Stop
     return {"success": True, "message": "Transport stopped"}
 
+@no_undo(idempotent=True)
 def play_project() -> dict:
     """Start project playback from the current cursor position."""
     RPR.Main_OnCommand(1007, 0)  # Transport: Play
     return {"success": True, "message": "Playback started"}
 
+@no_undo(idempotent=True)
 def set_cursor_position(*, position: float) -> dict:
     """Move the edit cursor to a position in seconds."""
     project = get_project()
     project.cursor_position = position
     return {"success": True, "position": project.cursor_position}
 
+@edits()
 def edit_audio_item(
     *,
     track_index: int,
@@ -119,6 +132,7 @@ def _trim_start(item, seconds: float) -> None:
         take.set_info_value("D_STARTOFFS", offset + seconds * take.get_info_value("D_PLAYRATE"))
 
 
+@edits(idempotent=True)
 def adjust_pitch(*, track_index: int, item_index: int, semitones: float) -> dict:
     """Adjust the pitch of an audio item by semitones (can be fractional)."""
     project = get_project()
@@ -133,6 +147,7 @@ def adjust_pitch(*, track_index: int, item_index: int, semitones: float) -> dict
         "pitch_semitones": take.get_info_value("D_PITCH"),
     }
 
+@edits(idempotent=True)
 def adjust_playback_rate(*, track_index: int, item_index: int, rate: float) -> dict:
     """Adjust playback rate of an audio item. 1.0 = normal speed, 0.5 = half speed."""
     project = get_project()

@@ -1,5 +1,7 @@
+from reaper_mcp.guids import resolve_track_index, track_guid
 from reaper_mcp.reaper import RPR, get_project, is_null
-from reaper_mcp.units import db_to_linear
+from reaper_mcp.undo import edits, read_only
+from reaper_mcp.units import db_to_linear, linear_to_db
 
 # "Track: Toggle track volume/pan envelope visible", run on the selected tracks.
 SHOW_ENVELOPE = {"Volume": 40406, "Pan": 40407}
@@ -27,6 +29,7 @@ def _envelope(project, track, name: str):
     return envelope
 
 
+@edits()
 def add_volume_automation(*, track_index: int, position: float, value_db: float) -> dict:
     """
     Add a volume automation point on a track, showing its volume envelope if needed.
@@ -42,6 +45,7 @@ def add_volume_automation(*, track_index: int, position: float, value_db: float)
     return {"success": True, "track_index": track_index, "position": position, "value_db": value_db}
 
 
+@edits()
 def add_pan_automation(*, track_index: int, position: float, pan: float) -> dict:
     """
     Add a pan automation point on a track, showing its pan envelope if needed.
@@ -55,6 +59,7 @@ def add_pan_automation(*, track_index: int, position: float, pan: float) -> dict
     return {"success": True, "track_index": track_index, "position": position, "pan": pan}
 
 
+@edits()
 def create_send(
     *,
     source_track_index: int, dest_track_index: int, volume_db: float = 0.0
@@ -82,27 +87,58 @@ def create_send(
         "volume_db": volume_db,
     }
 
+def _pointer_from_value(value: float) -> str:
+    """A track pointer read through a *_Value getter, as reapy writes track ids:
+    REAPER's Python binding hands pointers back as numbers there."""
+    return f"(MediaTrack*)0x{int(value):016X}"
+
+
+def pointer_indices(tracks: list) -> dict[str, tuple[int, object]]:
+    """Each track's pointer -> (index, track), built once per call: every
+    project.tracks access is a round trip to REAPER."""
+    return {t.id: (i, t) for i, t in enumerate(tracks)}
+
+
+def track_sends(track, indices: dict[str, tuple[int, object]]) -> list[dict]:
+    """track's sends to other tracks: volume in dB, pan, mute and the destination.
+    indices: pointer_indices of the project's tracks."""
+    sends = []
+    for i in range(RPR.GetTrackNumSends(track.id, 0)):
+        dest = _pointer_from_value(RPR.GetTrackSendInfo_Value(track.id, 0, i, "P_DESTTRACK"))
+        dest_index, dest_track = indices.get(dest, (None, None))
+        sends.append({
+            "send_index": i,
+            "dest_track_index": dest_index,
+            "dest_track_guid": track_guid(dest_track) if dest_track is not None else None,
+            "dest_track_name": dest_track.name if dest_track is not None else None,
+            "volume_db": round(linear_to_db(RPR.GetTrackSendInfo_Value(track.id, 0, i, "D_VOL")), 2),
+            "pan": RPR.GetTrackSendInfo_Value(track.id, 0, i, "D_PAN"),
+            "muted": bool(RPR.GetTrackSendInfo_Value(track.id, 0, i, "B_MUTE")),
+        })
+    return sends
+
+
+@read_only
 def list_sends(*, track_index: int) -> dict:
-    """List all sends from a track."""
+    """List all sends from a track: the destination track (index, GUID, name),
+    volume in dB, pan and mute."""
     project = get_project()
     track = project.tracks[track_index]
-    n = RPR.GetTrackNumSends(track.id, 0)
-    sends = []
-    for i in range(n):
-        vol = RPR.GetTrackSendInfo_Value(track.id, 0, i, "D_VOL")
-        pan = RPR.GetTrackSendInfo_Value(track.id, 0, i, "D_PAN")
-        muted = bool(RPR.GetTrackSendInfo_Value(track.id, 0, i, "B_MUTE"))
-        sends.append({"send_index": i, "volume_linear": vol, "pan": pan, "muted": muted})
-    return {"success": True, "track_index": track_index, "sends": sends}
+    return {"success": True, "track_index": track_index, "guid": track_guid(track),
+            "sends": track_sends(track, pointer_indices(list(project.tracks)))}
 
-def remove_send(*, source_track_index: int, send_index: int) -> dict:
-    """Remove a send from a track by its index."""
-    project = get_project()
-    track = project.tracks[source_track_index]
+
+@edits(destructive=True)
+def remove_send(*, source_track_index: int | str, send_index: int) -> dict:
+    """Remove a send from a track by its index (see list_sends).
+    source_track_index: the track's index, or its GUID from list_tracks (safer: a
+    GUID still names the same track after tracks were added, deleted or moved)."""
+    source_track_index, track = resolve_track_index(get_project(), source_track_index)
     if not RPR.RemoveTrackSend(track.id, 0, send_index):
         return {"success": False, "error": f"track {source_track_index} has no send {send_index}"}
     return {"success": True, "source_track_index": source_track_index, "send_index": send_index}
 
+@edits(idempotent=True)
 def set_send_volume(*, source_track_index: int, send_index: int, volume_db: float) -> dict:
     """Set the volume of a send in dB."""
     project = get_project()
@@ -116,23 +152,69 @@ def set_send_volume(*, source_track_index: int, send_index: int, volume_db: floa
         "volume_db": volume_db,
     }
 
+def _close_open_folders(tracks: list) -> tuple | None:
+    """Make the next track added at the end a top-level track.
+
+    A track's I_FOLDERDEPTH is 1 when it starts a folder and negative when it
+    closes some; while they do not add up to 0 the last folder is still open,
+    and a track added after it lands inside. The last track then closes every
+    open folder. Returns (track, its old depth) to undo that, or None.
+    """
+    if not tracks:
+        return None
+    depths = [int(t.get_info_value("I_FOLDERDEPTH")) for t in tracks]
+    open_depth = sum(depths)
+    if open_depth <= 0:
+        return None
+    last = tracks[-1]
+    RPR.SetMediaTrackInfo_Value(last.id, "I_FOLDERDEPTH", depths[-1] - open_depth)
+    return last, depths[-1]
+
+
+def _unroute(routed: list, bus_track, closed: tuple | None) -> None:
+    """Take back a half-made bus: the routed tracks send to the master again,
+    folders closed for it reopen and the bus is deleted, which removes the
+    sends to it too."""
+    for track in routed:
+        RPR.SetMediaTrackInfo_Value(track.id, "B_MAINSEND", 1)
+    RPR.DeleteTrack(bus_track.id)
+    if closed is not None:
+        RPR.SetMediaTrackInfo_Value(closed[0].id, "I_FOLDERDEPTH", closed[1])
+
+
+@edits()
 def create_bus(*, name: str, track_indices: list[int]) -> dict:
     """
     Create a new bus track and route the given tracks to it via sends.
     track_indices: list of track indices to feed into the bus.
+    The routed tracks stop sending straight to the master (or to their parent
+    folder), so they are heard once, through the bus, instead of twice.
+    The bus is added at the end, outside any folder.
     """
+    if len(set(track_indices)) != len(track_indices):
+        return {"success": False, "error": f"track_indices repeats a track: {track_indices}"}
     project = get_project()
-    sources = [project.tracks[idx] for idx in track_indices]  # IndexError before any change
-    bus_idx = project.n_tracks
+    tracks = list(project.tracks)
+    sources = [tracks[idx] for idx in track_indices]  # IndexError before any change
+    closed = _close_open_folders(tracks)
+    bus_idx = len(tracks)
     project.add_track(bus_idx, name)
     bus_track = project.tracks[bus_idx]
-    sends = [
-        {"track_index": idx, "send_index": RPR.CreateTrackSend(src.id, bus_track.id)}
-        for idx, src in zip(track_indices, sources, strict=True)
-    ]
+    sends = []
+    for idx, src in zip(track_indices, sources, strict=True):
+        send_idx = RPR.CreateTrackSend(src.id, bus_track.id)
+        if send_idx < 0:
+            _unroute(sources[: len(sends)], bus_track, closed)
+            return {"success": False,
+                    "error": f"REAPER did not create a send from track {idx} to the bus; "
+                             "nothing was changed"}
+        # Otherwise the track reaches the master directly and through the bus.
+        RPR.SetMediaTrackInfo_Value(src.id, "B_MAINSEND", 0)
+        sends.append({"track_index": idx, "send_index": send_idx})
     return {
         "success": True,
         "bus_index": bus_idx,
+        "bus_guid": track_guid(bus_track),
         "bus_name": name,
         "sends": sends,
     }

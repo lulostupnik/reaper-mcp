@@ -301,3 +301,17 @@ def test_analyze_transients_silent(reaper, call):
         "note": None,
     }
     assert_rendered_and_deleted(reaper, rate=44100)
+
+
+@pytest.mark.parametrize("tool", ["analyze_frequency_spectrum", "detect_clipping",
+                                  "analyze_dynamics", "analyze_stereo_field", "analyze_loudness"])
+def test_analysis_leaves_the_users_render_settings_alone(reaper, call, tool):
+    """The analysis tools are read-only: the render they need is set up and then
+    the project's own render settings are put back."""
+    mine = {"RENDER_FILE": "/home/me/mixes", "RENDER_PATTERN": "$project-final",
+            "RENDER_FORMAT": "bDNwbQ==", "RENDER_SRATE": 44100.0, "RENDER_CHANNELS": 1.0,
+            "RENDER_BOUNDSFLAG": 2.0, "RENDER_ADDTOPROJ": 1.0}
+    reaper.project_info.update(mine)
+    assert call(tool)["success"] is True
+    assert reaper.project_info == mine
+    assert reaper.render_settings[0]["RENDER_BOUNDSFLAG"] == 1.0

@@ -4,6 +4,7 @@ import pytest
 
 from reaper_mcp import audio_tools
 from tests.fake_reaper.objects import ItemState
+from tests.helpers import assert_no_track
 
 RECORD, STOP, PLAY = 1013, 1016, 1007
 
@@ -28,6 +29,7 @@ def test_import_audio_file(reaper, call, tmp_path):
         "success": True,
         "track_index": 1,
         "item_index": 0,
+        "item_guid": track.items[0].guid,
         "position": 3.0,
         "length": 2.0,
         "file_path": str(wav),
@@ -38,13 +40,37 @@ def test_import_audio_file(reaper, call, tmp_path):
     assert other.items == []
 
 
-def test_import_audio_file_appends_after_existing_items(reaper, call, tmp_path):
+def test_import_audio_file_reports_the_new_item_not_the_last(reaper, call, tmp_path):
+    """REAPER keeps items in time order: an import before an existing item is
+    item 0, and the last item is the old one."""
+    wav = tmp_path / "loop.wav"
+    wav.write_bytes(b"RIFF")
+    track = _audio_item(reaper, position=10.0)
+    old = track.items[0]
+    result = call("import_audio_file", file_path=str(wav), track_index=0, position=0.0)
+    [new] = [item for item in track.items if item is not old]
+    assert (result["item_index"], result["item_guid"], result["position"]) == (0, new.guid, 0.0)
+    assert [i.position for i in track.items] == [0.0, 10.0]
+
+
+def test_import_audio_file_after_existing_items(reaper, call, tmp_path):
     wav = tmp_path / "loop.wav"
     wav.write_bytes(b"RIFF")
     track = _audio_item(reaper)
+    result = call("import_audio_file", file_path=str(wav), track_index=0, position=8.0)
+    assert (result["item_index"], result["position"]) == (1, 8.0)
+    assert result["item_guid"] == track.items[1].guid
+
+
+def test_import_audio_file_reports_no_new_item(reaper, call, tmp_path, monkeypatch):
+    from reapy import reascript_api
+
+    wav = tmp_path / "loop.wav"
+    wav.write_bytes(b"RIFF")
+    _audio_item(reaper)
+    monkeypatch.setattr(reascript_api, "InsertMedia", lambda *_: 0)
     result = call("import_audio_file", file_path=str(wav), track_index=0)
-    assert (result["item_index"], result["position"]) == (1, 0.0)
-    assert len(track.items) == 2
+    assert result == {"success": False, "error": f"REAPER did not insert {wav} on the track"}
 
 
 def test_import_audio_file_from_python_defaults_to_the_start(reaper, tmp_path):
@@ -69,7 +95,7 @@ def test_import_audio_file_bad_track(reaper, call, tmp_path):
     wav = tmp_path / "loop.wav"
     wav.write_bytes(b"RIFF")
     result = call("import_audio_file", file_path=str(wav), track_index=0)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert_no_track(result)
 
 
 # start_recording / stop_transport / play_project
@@ -89,7 +115,7 @@ def test_start_recording_arms_the_track(reaper, call):
 
 def test_start_recording_bad_track(reaper, call):
     result = call("start_recording", track_index=0)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert_no_track(result)
     assert reaper.commands == []
 
 
@@ -212,4 +238,4 @@ def test_adjust_playback_rate(reaper, call):
 
 def test_adjust_playback_rate_bad_track(reaper, call):
     result = call("adjust_playback_rate", track_index=0, item_index=0, rate=2.0)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert_no_track(result)

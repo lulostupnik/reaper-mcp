@@ -13,7 +13,14 @@ from pathlib import Path
 
 from reaper_mcp.project_tools import markers_and_regions
 from reaper_mcp.reaper import RPR
-from reaper_mcp.render_tools import RENDER_PROJECT, get_project_string, set_project_string
+from reaper_mcp.render_tools import (
+    RENDER_PROJECT,
+    get_project_string,
+    restore_render_settings,
+    save_render_settings,
+    set_project_string,
+)
+from reaper_mcp.undo import no_undo
 
 ALL_REGIONS = 3
 SELECTED_REGIONS = 5
@@ -187,26 +194,7 @@ def _render_regions(directory: str, regions: list, *, pattern: str, selected_onl
 
 
 def _save_render_settings() -> tuple[dict[str, str], dict[str, float]]:
-    return ({key: get_project_string(key) for key in REGION_STRINGS},
-            {key: RPR.GetSetProjectInfo(0, key, 0.0, False) for key in REGION_NUMBERS})
-
-
-def _restore_render_settings(strings: dict[str, str], numbers: dict[str, float]) -> list[str]:
-    """Put each setting back on its own, so one failure (say, a client that
-    disconnected during a long render) does not leave the rest unrestored.
-    Returns the failures as "KEY: error"."""
-    errors = []
-    for key, value in strings.items():
-        try:
-            set_project_string(key, value)
-        except Exception as e:
-            errors.append(f"{key}: {e}")
-    for key, number in numbers.items():
-        try:
-            RPR.GetSetProjectInfo(0, key, number, True)
-        except Exception as e:
-            errors.append(f"{key}: {e}")
-    return errors
+    return save_render_settings(REGION_STRINGS, REGION_NUMBERS)
 
 
 def _with_restore_errors(error: str | None, restore_errors: list[str]) -> str:
@@ -214,6 +202,7 @@ def _with_restore_errors(error: str | None, restore_errors: list[str]) -> str:
     return f"{error.rstrip('.')}; {note}" if error else note
 
 
+@no_undo(destructive=True)
 def render_regions(
     *,
     output_directory: str,
@@ -255,11 +244,11 @@ def render_regions(
             directory, regions, pattern=pattern, selected_only=selected_only,
             dry_run=dry_run, stall_timeout=stall_timeout_seconds, timeout=timeout_seconds)
     except Exception as e:
-        restore_errors = _restore_render_settings(strings, numbers)
+        restore_errors = restore_render_settings(strings, numbers)
         if restore_errors:
             raise RuntimeError(_with_restore_errors(str(e), restore_errors)) from e
         raise
-    restore_errors = _restore_render_settings(strings, numbers)
+    restore_errors = restore_render_settings(strings, numbers)
     if restore_errors:
         # The files may be complete, but the project was left changed, so the
         # call did not do everything it reports.

@@ -286,7 +286,7 @@
     }
   },
   "create_bus": {
-    "description": "Create a new bus track and route the given tracks to it via sends.\ntrack_indices: list of track indices to feed into the bus.",
+    "description": "Create a new bus track and route the given tracks to it via sends.\ntrack_indices: list of track indices to feed into the bus.\nThe routed tracks stop sending straight to the master (or to their parent\nfolder), so they are heard once, through the bus, instead of twice.\nThe bus is added at the end, outside any folder.",
     "input_schema": {
       "properties": {
         "name": {
@@ -403,7 +403,7 @@
     }
   },
   "create_project": {
-    "description": "Create a new REAPER project, in a new project tab, with the given tempo and\ntime signature. The current project stays open, unsaved changes included.",
+    "description": "Create a new REAPER project in a new project tab. The current project stays\nopen in its own tab, unsaved changes included.\nuse_default_template: start from the default project template set in REAPER's\npreferences (its tracks, routing and settings); without one configured the\nproject starts empty. false: always start empty.\ntempo / time_signature (e.g. \"3/4\"): set them; when omitted a template keeps\nits own, and an empty project gets 120 BPM 4/4 with use_default_template=false.\nname: the song's name; save_project uses it as the file name on the first save.",
     "input_schema": {
       "properties": {
         "name": {
@@ -412,14 +412,33 @@
           "type": "string"
         },
         "tempo": {
-          "default": 120.0,
-          "title": "Tempo",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tempo"
         },
         "time_signature": {
-          "default": "4/4",
-          "title": "Time Signature",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time Signature"
+        },
+        "use_default_template": {
+          "default": true,
+          "title": "Use Default Template",
+          "type": "boolean"
         }
       },
       "title": "create_projectArguments",
@@ -453,7 +472,7 @@
     }
   },
   "create_track": {
-    "description": "Create a new track at the end of the project.\ntrack_type: audio, midi, instrument, folder",
+    "description": "Create a new track at the end of the project.\ntrack_type: audio, midi, instrument, folder.\nmidi and instrument tracks record from every MIDI device on every channel.\nInstrument tracks also have input monitoring on: once the track is armed for\nrecording, playing the keyboard sounds through the instrument plugin (add it\nwith add_fx). A track that is not armed stays silent while you play.",
     "input_schema": {
       "properties": {
         "name": {
@@ -474,12 +493,19 @@
     }
   },
   "delete_track": {
-    "description": "Delete a track by its index.",
+    "description": "Delete a track.\ntrack_index: the track's index, or its GUID from list_tracks (safer: a GUID\nstill names the same track after tracks were added, deleted or moved).",
     "input_schema": {
       "properties": {
         "track_index": {
-          "title": "Track Index",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Track Index"
         }
       },
       "required": [
@@ -538,6 +564,14 @@
       "type": "object"
     }
   },
+  "get_context": {
+    "description": "What is happening in REAPER right now: play state, edit cursor and play\nposition (seconds), time selection and loop range (null when empty), whether\nrepeat is on, the selected tracks and items (with GUIDs), the FX touched last,\nwhether the project has unsaved changes, and the project file (\"\" if never saved).",
+    "input_schema": {
+      "properties": {},
+      "title": "get_contextArguments",
+      "type": "object"
+    }
+  },
   "get_fx_parameters": {
     "description": "Get all parameters for an FX plugin, including names, indices, and current values.",
     "input_schema": {
@@ -560,10 +594,18 @@
     }
   },
   "get_project_info": {
-    "description": "Get information about the current project: name, path, tempo, tracks, length.",
+    "description": "Get basic information about the current project: name, file, recording\nfolder, tempo, track count, length, markers and regions. For every track's\nrouting, recording setup and FX use get_project_summary.",
     "input_schema": {
       "properties": {},
       "title": "get_project_infoArguments",
+      "type": "object"
+    }
+  },
+  "get_project_summary": {
+    "description": "The whole project in one call: name, file, tempo, time signature, length,\nthe master (volume, FX), and every track with its GUID, name, volume (dB), pan,\nmute/solo, record arm, record input, input monitoring, FX names, sends and item\ncount; plus markers and regions.",
+    "input_schema": {
+      "properties": {},
+      "title": "get_project_summaryArguments",
       "type": "object"
     }
   },
@@ -580,6 +622,14 @@
         "track_index"
       ],
       "title": "get_track_infoArguments",
+      "type": "object"
+    }
+  },
+  "get_undo_state": {
+    "description": "Say what undo and redo would do right now: the name of the step undo would\ntake back (next_undo) and the one redo would bring back (next_redo), or null.\nSteps made by this server start with \"MCP: \".",
+    "input_schema": {
+      "properties": {},
+      "title": "get_undo_stateArguments",
       "type": "object"
     }
   },
@@ -646,7 +696,7 @@
     }
   },
   "list_sends": {
-    "description": "List all sends from a track.",
+    "description": "List all sends from a track: the destination track (index, GUID, name),\nvolume in dB, pan and mute.",
     "input_schema": {
       "properties": {
         "track_index": {
@@ -686,7 +736,7 @@
     }
   },
   "list_tracks": {
-    "description": "List all tracks in the current project with their basic parameters.",
+    "description": "List all tracks in the current project with their basic parameters\n(compact; get_project_summary adds routing, recording setup and FX names).",
     "input_schema": {
       "properties": {},
       "title": "list_tracksArguments",
@@ -720,7 +770,7 @@
     }
   },
   "load_project": {
-    "description": "Load a REAPER project (.rpp) from the given file path.",
+    "description": "Open a REAPER project (.rpp) from the given file path in place of the\ncurrent one. Refuses while the current project has unsaved changes: save it\nfirst (save_project), or open a new tab with create_project.",
     "input_schema": {
       "properties": {
         "project_path": {
@@ -757,8 +807,22 @@
       "type": "object"
     }
   },
+  "redo": {
+    "description": "Redo the last undone change, like Ctrl+Shift+Z in REAPER, and say which\nstep was redone. Like undo, only redoes this server's steps unless\ninclude_manual_steps=true, and never while recording.",
+    "input_schema": {
+      "properties": {
+        "include_manual_steps": {
+          "default": false,
+          "title": "Include Manual Steps",
+          "type": "boolean"
+        }
+      },
+      "title": "redoArguments",
+      "type": "object"
+    }
+  },
   "remove_fx": {
-    "description": "Remove an FX plugin from a track by its index.",
+    "description": "Remove an FX plugin from a track by its index.\ntrack_index: the track's index, or its GUID from list_tracks (safer: a GUID\nstill names the same track after tracks were added, deleted or moved).",
     "input_schema": {
       "properties": {
         "fx_index": {
@@ -766,8 +830,15 @@
           "type": "integer"
         },
         "track_index": {
-          "title": "Track Index",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Track Index"
         }
       },
       "required": [
@@ -779,7 +850,7 @@
     }
   },
   "remove_send": {
-    "description": "Remove a send from a track by its index.",
+    "description": "Remove a send from a track by its index (see list_sends).\nsource_track_index: the track's index, or its GUID from list_tracks (safer: a\nGUID still names the same track after tracks were added, deleted or moved).",
     "input_schema": {
       "properties": {
         "send_index": {
@@ -787,8 +858,15 @@
           "type": "integer"
         },
         "source_track_index": {
-          "title": "Source Track Index",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Source Track Index"
         }
       },
       "required": [
@@ -1005,7 +1083,7 @@
     }
   },
   "save_project": {
-    "description": "Save the current project as a .rpp file. If no path is given, saves to\n~/Documents/REAPER Projects/<project name>.rpp, replacing an earlier save there.\nAn existing file at a given path is only replaced with overwrite=true.",
+    "description": "Save the current project as a .rpp file, which then becomes the open\nproject's file (later saves and new recordings go next to it). With no path,\na project that has a file is saved to it again; one that was never saved gets\na new file in the documents folder's \"REAPER Projects\" folder, named after the\nproject (name from create_project, else the time), with \" (2)\" added if that\nname is taken. An existing file at a given path is only replaced with\noverwrite=true. The reply's project_path is the file written.",
     "input_schema": {
       "properties": {
         "overwrite": {
@@ -1311,6 +1389,20 @@
     "input_schema": {
       "properties": {},
       "title": "stop_transportArguments",
+      "type": "object"
+    }
+  },
+  "undo": {
+    "description": "Undo the last change in the project, like Ctrl+Z in REAPER, and say which\nstep was undone. Every change this server makes is one step (\"MCP: ...\"), so\none undo takes back one whole tool call.\nOnly this server's steps are undone: when the last step was made by hand in\nREAPER or is recorded media (undoing it deletes the take just recorded), the\ntool refuses and names it; pass include_manual_steps=true only after the user\nconfirms. Never undoes while recording.",
+    "input_schema": {
+      "properties": {
+        "include_manual_steps": {
+          "default": false,
+          "title": "Include Manual Steps",
+          "type": "boolean"
+        }
+      },
+      "title": "undoArguments",
       "type": "object"
     }
   }

@@ -88,11 +88,18 @@ def test_insert_track_template_appends_by_default(reaper, call, templates):
         "file": str(file),
         "inserted_count": 2,
         "first_track_index": 3,
-        "tracks": [{"index": 3, "name": "from Lead Vox"}, {"index": 4, "name": "from Lead Vox"}],
+        "tracks": [
+            {"index": 3, "guid": reaper.tracks[3].guid, "name": "from Lead Vox"},
+            {"index": 4, "guid": reaper.tracks[4].guid, "name": "from Lead Vox"},
+        ],
     }
     assert reaper.opened == [str(file)]
     assert [t.name for t in reaper.tracks] == ["A", "B", "C", "from Lead Vox", "from Lead Vox"]
     assert [t.selected for t in reaper.tracks] == [False, False, False, True, True]
+    # One undo step, named after the template, takes the whole insert back.
+    assert reaper.Undo_CanUndo2(0) == "MCP: Insert track template: Lead Vox"
+    assert call("undo")["undone"] == "MCP: Insert track template: Lead Vox"
+    assert [t.name for t in reaper.tracks] == ["A", "B", "C"]
 
 
 def test_insert_track_template_explicit_null_position_appends(reaper, call, templates):

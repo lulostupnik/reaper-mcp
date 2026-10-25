@@ -47,7 +47,10 @@ def test_sends(live_project, call):
     assert RPR.GetTrackSendInfo_Value(source.id, 0, 0, "D_VOL") == pytest.approx(10 ** (-6 / 20))
     call("set_send_volume", source_track_index=0, send_index=0, volume_db=-12.0)
     assert RPR.GetTrackSendInfo_Value(source.id, 0, 0, "D_VOL") == pytest.approx(10 ** (-12 / 20))
-    assert call("list_sends", track_index=0)["sends"][0]["volume_linear"] == pytest.approx(10 ** (-12 / 20))
+    [send] = call("list_sends", track_index=0)["sends"]
+    assert send["volume_db"] == pytest.approx(-12.0)
+    # P_DESTTRACK comes back from REAPER's Python binding as a number.
+    assert (send["dest_track_index"], send["dest_track_name"]) == (1, "dst")
     assert call("set_send_volume", source_track_index=0, send_index=5, volume_db=0.0)["success"] is False
     assert call("remove_send", source_track_index=0, send_index=5)["success"] is False
     assert call("remove_send", source_track_index=0, send_index=0)["success"] is True
