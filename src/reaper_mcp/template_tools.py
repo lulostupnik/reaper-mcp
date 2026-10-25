@@ -109,7 +109,7 @@ def resolve_template(name: str, template_dir: Path) -> Path:
     Raises FileNotFoundError or ValueError (ambiguous) with a helpful message.
     """
     direct = Path(name).expanduser()
-    if direct.is_file():
+    if direct.is_file() and direct.suffix.lower() == TEMPLATE_SUFFIX:
         return direct
 
     key = name.replace("\\", "/").strip().strip("/")

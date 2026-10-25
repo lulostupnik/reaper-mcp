@@ -11,6 +11,7 @@ import soundfile as sf
 from reapy import reascript_api
 
 from reaper_mcp.render_tools import (
+    _stem_names,
     render_project,
     render_stems,
     render_time_selection,
@@ -71,11 +72,40 @@ def test_render_empty_project_is_refused_before_reaper_sees_it(reaper, call, tmp
     assert reaper.commands == []
 
 
-def test_render_project_replaces_an_existing_file(reaper, call, tmp_path):
+def test_render_project_refuses_an_existing_file(reaper, call, tmp_path):
     out = tmp_path / "deep" / "mix.wav"
     assert call("render_project", output_path=str(out))["success"] is True
+    result = call("render_project", output_path=str(out))
+    assert result["success"] is False and "overwrite=true" in result["error"]
+    assert reaper.commands == [RENDER]
+
+
+def test_render_project_replaces_an_existing_file_with_overwrite(reaper, call, tmp_path):
+    out = tmp_path / "deep" / "mix.wav"
     assert call("render_project", output_path=str(out))["success"] is True
+    assert call("render_project", output_path=str(out), overwrite=True)["success"] is True
     assert reaper.commands == [RENDER, RENDER]
+
+
+def test_render_project_never_follows_a_symlink(reaper, call, tmp_path):
+    victim = tmp_path / "precious.wav"
+    victim.write_bytes(b"keep me")
+    link = tmp_path / "mix.wav"
+    link.symlink_to(victim)
+    result = call("render_project", output_path=str(link), overwrite=True)
+    assert result["success"] is False and "not a regular file" in result["error"]
+    assert victim.read_bytes() == b"keep me"
+    assert reaper.commands == []
+
+
+def test_render_stems_refuses_existing_files_before_rendering(reaper, call, tmp_path):
+    reaper.add_track("Kick")
+    first = call("render_stems", output_directory=str(tmp_path))
+    assert first["success"] is True
+    rendered = len(reaper.commands)
+    result = call("render_stems", output_directory=str(tmp_path))
+    assert result["success"] is False and "overwrite=true" in result["error"]
+    assert len(reaper.commands) == rendered
 
 
 def test_render_project_reports_a_file_reaper_did_not_write(reaper, call, tmp_path, monkeypatch):
@@ -232,3 +262,13 @@ def test_render_stems_unsupported_format_renders_nothing(reaper, call, tmp_path)
     }
     assert reaper.commands == []
     assert [t.info["I_SOLO"] for t in reaper.tracks] == [1.0, 0.0]
+
+
+def test_render_refuses_reaper_wildcards_in_the_file_name(reaper, call, tmp_path):
+    result = call("render_project", output_path=str(tmp_path / "$project.wav"))
+    assert result["success"] is False and "$" in result["error"]
+    assert reaper.commands == []
+
+
+def test_stem_names_differ_case_insensitively():
+    assert _stem_names(["Kick", "kick", "KICK"]) == ["Kick", "kick_2", "KICK_3"]

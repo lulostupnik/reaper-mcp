@@ -201,3 +201,47 @@ def test_set_time_signature_leaves_a_marker_half_a_second_in(reaper, call):
     reaper.tempo_markers = [[0.5, 140.0, 4, 4]]
     call("set_time_signature", numerator=7, denominator=8)
     assert reaper.tempo_markers == [[0.0, 120.0, 7, 8], [0.5, 140.0, 4, 4]]
+
+
+def test_save_project_refuses_a_non_rpp_path(reaper, call, tmp_path):
+    target = tmp_path / ".bashrc"
+    result = call("save_project", project_path=str(target))
+    assert result["success"] is False and ".rpp" in result["error"]
+    assert not target.exists()
+
+
+def test_save_project_refuses_to_overwrite_by_default(reaper, call, tmp_path):
+    target = tmp_path / "song.rpp"
+    target.write_text("old")
+    result = call("save_project", project_path=str(target))
+    assert result["success"] is False and "overwrite=true" in result["error"]
+    assert target.read_text() == "old"
+    assert call("save_project", project_path=str(target), overwrite=True)["success"] is True
+
+
+def test_load_project_refuses_a_non_rpp_file(reaper, call, tmp_path):
+    path = tmp_path / "notes.txt"
+    path.write_text("hi")
+    result = call("load_project", project_path=str(path))
+    assert result["success"] is False and ".rpp" in result["error"]
+
+
+def test_save_project_refuses_to_write_through_a_symlink(reaper, call, tmp_path):
+    victim = tmp_path / "victim.txt"
+    link = tmp_path / "song.rpp"
+    link.symlink_to(victim)
+    result = call("save_project", project_path=str(link), overwrite=True)
+    assert result["success"] is False and "symlink" in result["error"]
+    assert not victim.exists()
+
+
+def test_save_project_default_path_can_be_saved_again(reaper, call, monkeypatch):
+    monkeypatch.setenv("HOME", str(reaper.tmp))
+    assert call("save_project")["success"] is True
+    assert call("save_project")["success"] is True
+
+
+def test_save_project_hands_reaper_an_absolute_path(reaper, call, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = call("save_project", project_path="rel.rpp")
+    assert result == {"success": True, "project_path": str(tmp_path / "rel.rpp")}

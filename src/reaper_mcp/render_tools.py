@@ -13,7 +13,8 @@ How REAPER takes render settings (verified on REAPER 7.82):
 Rendering never reaches a REAPER dialog: with nothing to render REAPER shows
 a modal "Nothing to render!", and with an existing target an overwrite
 prompt, and either blocks the call until someone clicks. So an empty source
-is refused before rendering and an existing target is removed first.
+is refused before rendering, and an existing target is refused unless the
+caller passes overwrite=True, in which case it is removed first.
 """
 
 import base64
@@ -61,7 +62,14 @@ def _target(output_path: str, format: str) -> Path:
     """The file REAPER will write for output_path: its extension is the format's."""
     if format.lower() not in FORMAT_TYPES:
         raise ValueError(f"unsupported format {format!r}; use one of {sorted(FORMAT_TYPES)}")
-    path = Path(output_path).expanduser().resolve()
+    # Resolve the folder but not the file itself, so a symlink at the target
+    # is refused (see _render) instead of followed to the file it points at.
+    raw = Path(output_path).expanduser()
+    path = raw.parent.resolve() / raw.name
+    if "$" in path.name:
+        # REAPER expands $wildcards in RENDER_PATTERN, so the file it writes
+        # would not be the one checked here.
+        raise ValueError(f"output file name may not contain '$': {path.name!r}")
     extension = "." + format.lower()
     if path.suffix.lower() in {"." + f for f in FORMAT_TYPES} and path.suffix.lower() != extension:
         raise ValueError(f"output_path {path.name!r} does not match format {format!r}")
@@ -69,9 +77,13 @@ def _target(output_path: str, format: str) -> Path:
 
 
 def _render(target: Path, *, format: str, sample_rate: int, bit_depth: int,
-            channels: int, bounds: int) -> None:
+            channels: int, bounds: int, overwrite: bool = False) -> None:
     """Configure REAPER's render settings and render to target."""
     config = _format_config(format, bit_depth)
+    if target.is_symlink() or (target.exists() and not target.is_file()):
+        raise FileExistsError(f"{target} is not a regular file; refusing to replace it")
+    if target.exists() and not overwrite:
+        raise FileExistsError(f"{target} already exists; pass overwrite=true to replace it")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.unlink(missing_ok=True)  # an existing file raises REAPER's overwrite prompt
     set_project_string("RENDER_FILE", str(target.parent))
@@ -115,9 +127,11 @@ def render_project(
     sample_rate: int = 48000,
     bit_depth: int = 24,
     channels: int = 2,
+    overwrite: bool = False,
 ) -> dict:
     """
-    Render the entire project to a file.
+    Render the entire project to a file. An existing file is only replaced
+    with overwrite=true.
     format: wav, flac, mp3 (requires LAME), ogg.
     sample_rate: e.g. 44100, 48000, 96000.
     bit_depth: 16, 24, or 32 (WAV only; ignored for mp3/ogg/flac).
@@ -126,7 +140,7 @@ def render_project(
     target = _target(output_path, format)
     _require_content(get_project())
     _render(target, format=format, sample_rate=sample_rate, bit_depth=bit_depth,
-            channels=channels, bounds=ENTIRE_PROJECT)
+            channels=channels, bounds=ENTIRE_PROJECT, overwrite=overwrite)
     result = _rendered(target)
     if result["success"]:
         result.update(format=format, sample_rate=sample_rate, bit_depth=bit_depth,
@@ -134,7 +148,7 @@ def render_project(
     return result
 
 
-def render_time_selection(
+def render_time_selection(  # noqa: PLR0913 -- one argument per render setting
     *,
     output_path: str,
     start: float,
@@ -143,8 +157,10 @@ def render_time_selection(
     sample_rate: int = 48000,
     bit_depth: int = 24,
     channels: int = 2,
+    overwrite: bool = False,
 ) -> dict:
-    """Render a specific time range of the project to a file."""
+    """Render a specific time range of the project to a file. An existing file
+    is only replaced with overwrite=true."""
     target = _target(output_path, format)
     if not 0 <= start < end:
         return {"success": False, "error": f"need 0 <= start < end; got start={start}, end={end}"}
@@ -155,7 +171,7 @@ def render_time_selection(
     project.time_selection = (start, end)
     try:
         _render(target, format=format, sample_rate=sample_rate, bit_depth=bit_depth,
-                channels=channels, bounds=TIME_SELECTION)
+                channels=channels, bounds=TIME_SELECTION, overwrite=overwrite)
     finally:
         project.time_selection = previous
     result = _rendered(target)
@@ -171,11 +187,13 @@ def render_stems(
     format: str = "wav",
     sample_rate: int = 48000,
     bit_depth: int = 24,
+    overwrite: bool = False,
 ) -> dict:
     """
     Render each track as a separate stem file by soloing each track individually.
     track_indices: list of track indices, or null to render all tracks.
-    Files are named after the track names in the output directory.
+    Files are named after the track names in the output directory. Existing
+    files are only replaced with overwrite=true.
     """
     directory = Path(output_directory).expanduser().resolve()
     project = get_project()
@@ -183,12 +201,18 @@ def render_stems(
     indices = track_indices if track_indices is not None else list(range(project.n_tracks))
     tracks = project.tracks
     names = _stem_names([tracks[i].name or f"Track_{i}" for i in indices])
+    targets = [directory / f"{file_name}.{format.lower()}" for file_name in names]
+    # Refuse before rendering anything, so a clash never leaves half the stems written.
+    clashes = [str(t) for t in targets if t.exists() or t.is_symlink()]
+    if clashes and not overwrite:
+        return {"success": False,
+                "error": f"already exist (pass overwrite=true to replace): {', '.join(clashes)}"}
     solos = [track.get_info_value("I_SOLO") for track in tracks]
     try:
         stems = [
-            _render_stem(tracks, index, directory / f"{file_name}.{format.lower()}",
-                         format=format, sample_rate=sample_rate, bit_depth=bit_depth)
-            for index, file_name in zip(indices, names, strict=True)
+            _render_stem(tracks, index, target, format=format, sample_rate=sample_rate,
+                         bit_depth=bit_depth, overwrite=overwrite)
+            for index, target in zip(indices, targets, strict=True)
         ]
     finally:
         for track, solo in zip(tracks, solos, strict=True):
@@ -198,23 +222,25 @@ def render_stems(
 
 def _stem_names(track_names: list[str]) -> list[str]:
     """File-safe, unique names: a second "Kick" becomes "Kick_2"."""
+    # Keyed case-insensitively: on macOS and Windows "Kick" and "kick" are one file.
     seen: dict[str, int] = {}
     names = []
     for raw in track_names:
         safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in raw)
-        seen[safe] = seen.get(safe, 0) + 1
-        names.append(safe if seen[safe] == 1 else f"{safe}_{seen[safe]}")
+        key = safe.casefold()
+        seen[key] = seen.get(key, 0) + 1
+        names.append(safe if seen[key] == 1 else f"{safe}_{seen[key]}")
     return names
 
 
 def _render_stem(tracks, index: int, target: Path, *, format: str,
-                 sample_rate: int, bit_depth: int) -> dict:
+                 sample_rate: int, bit_depth: int, overwrite: bool = False) -> dict:
     # Solo through I_SOLO: reapy's solo() goes through an action that leaves
     # solo unchanged (tests/contract).
     for i, track in enumerate(tracks):
         track.set_info_value("I_SOLO", SOLO_IN_PLACE if i == index else 0)
     _render(target, format=format, sample_rate=sample_rate, bit_depth=bit_depth,
-            channels=2, bounds=ENTIRE_PROJECT)
+            channels=2, bounds=ENTIRE_PROJECT, overwrite=overwrite)
     return {
         "track_index": index,
         "track_name": tracks[index].name or f"Track_{index}",

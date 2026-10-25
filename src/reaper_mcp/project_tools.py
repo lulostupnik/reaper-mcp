@@ -7,6 +7,7 @@ from reaper_mcp.reaper import RPR, get_project
 # "New project tab, ignore default template": an empty project in a new tab,
 # so nothing open is replaced and REAPER never asks to save.
 NEW_PROJECT_TAB = 41929
+PROJECT_SUFFIX = ".rpp"
 
 
 def create_project(*, tempo: float = 120.0, time_signature: str = "4/4", name: str = "") -> dict:
@@ -26,15 +27,30 @@ def create_project(*, tempo: float = 120.0, time_signature: str = "4/4", name: s
     }
 
 
-def save_project(*, project_path: str = "") -> dict:
-    """Save the current project. If no path is given, saves to ~/Documents/REAPER Projects."""
+def save_project(*, project_path: str = "", overwrite: bool = False) -> dict:
+    """Save the current project as a .rpp file. If no path is given, saves to
+    ~/Documents/REAPER Projects/<project name>.rpp, replacing an earlier save there.
+    An existing file at a given path is only replaced with overwrite=true."""
     project = get_project()
     if not project_path:
         proj_name = project.name or f"Project {time.strftime('%Y-%m-%d %H-%M-%S')}"
+        proj_name = "".join(c if c.isalnum() or c in " _-." else "_" for c in proj_name)
+        if proj_name.lower().endswith(PROJECT_SUFFIX):
+            proj_name = proj_name[: -len(PROJECT_SUFFIX)]
         default_dir = Path.home() / "Documents" / "REAPER Projects"
         os.makedirs(default_dir, exist_ok=True)
         project_path = str(default_dir / f"{proj_name}.rpp")
-    os.makedirs(os.path.dirname(os.path.abspath(project_path)), exist_ok=True)
+        overwrite = True  # the tool's own folder and name: saving again updates it
+    path = absolute_path(project_path)
+    if path.suffix.lower() != PROJECT_SUFFIX:
+        return {"success": False, "error": f"project_path must end in .rpp: {project_path}"}
+    if path.is_symlink():
+        return {"success": False, "error": f"{path} is a symlink; refusing to write through it"}
+    if path.exists() and not overwrite:
+        return {"success": False,
+                "error": f"{path} already exists; pass overwrite=true to replace it"}
+    project_path = str(path)
+    os.makedirs(path.parent, exist_ok=True)
     # reapy's Project.save takes a "force save as" flag, not a path.
     RPR.Main_SaveProjectEx(0, project_path, 0)
     if not os.path.isfile(project_path):
@@ -42,10 +58,25 @@ def save_project(*, project_path: str = "") -> dict:
     return {"success": True, "project_path": project_path}
 
 
+def absolute_path(path: str) -> Path:
+    """path with ~ expanded and its folder resolved, but not its last component.
+
+    REAPER resolves a relative path against its own working directory, not this
+    server's, so every path handed to REAPER is made absolute here first; the
+    last component is left unresolved so a symlink there can be detected.
+    """
+    raw = Path(path).expanduser()
+    return raw.parent.resolve() / raw.name
+
+
 def load_project(*, project_path: str) -> dict:
     """Load a REAPER project (.rpp) from the given file path."""
-    if not os.path.exists(project_path):
+    path = absolute_path(project_path)
+    if path.suffix.lower() != PROJECT_SUFFIX:
+        return {"success": False, "error": f"not a REAPER project (.rpp): {project_path}"}
+    if not path.is_file():
         return {"success": False, "error": f"File not found: {project_path}"}
+    project_path = str(path)
     RPR.Main_openProject(project_path)
     project = get_project()
     return {

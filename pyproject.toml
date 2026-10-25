@@ -22,7 +22,10 @@ classifiers = [
 
 dependencies = [
     "mcp>=2.0.0,<3",
-    "python-reapy>=0.10.0",
+    # Pinned exactly: the bridge (bridge.py) subclasses reapy's server
+    # internals, and reapy is unmaintained, so no release should slip in unreviewed.
+    "python-reapy==0.10.0",
+    "psutil>=5.0",
     "numpy>=1.24.0",
     "librosa>=0.10.0",
     "pyloudnorm>=0.1.1",
@@ -36,6 +39,7 @@ Issues = "https://github.com/bonfire-systems/reaper-mcp/issues"
 
 [project.scripts]
 reaper-mcp-server = "reaper_mcp.__main__:main"
+reaper-mcp-setup = "reaper_mcp.setup_reaper:main"
 
 [project.optional-dependencies]
 dev = [

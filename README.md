@@ -6,34 +6,64 @@ A Model Context Protocol (MCP) server that enables AI agents to control REAPER D
 
 - [REAPER](https://www.reaper.fm/) 7 or later, installed and running
 - Python 3.10+
-- REAPER's distant API enabled (see [Setup](#setting-up-reaper))
+- The reaper-mcp bridge installed in REAPER (see [Setup](#setting-up-reaper))
 
 ## Installation
 
-```bash
-pip install reaper-mcp-server
-```
-
-Or install from source:
+Install from source with the lockfile, so every dependency is hash-checked:
 
 ```bash
-git clone https://github.com/bonfire-systems/reaper-mcp.git
+git clone https://github.com/lulostupnik/reaper-mcp.git
 cd reaper-mcp
-pip install -e .
+uv venv --python 3.12 .venv   # on Linux, use the Python whose libpython REAPER will load
+uv sync --locked --no-dev
 ```
 
 ## Setting Up REAPER
 
-The server communicates with REAPER via [python-reapy](https://github.com/RomeoDespres/reapy), which requires REAPER's distant API to be enabled.
+The server drives REAPER through [python-reapy](https://github.com/RomeoDespres/reapy).
+reapy's own setup (`reapy.config.enable_dist_api()`) is **not** used here: it
+starts a server on `0.0.0.0:2306` with no authentication that runs any Python
+callable a client names, and adds a password-less web interface on port 2307,
+so anyone on the same network could run commands on your computer.
 
-1. Open REAPER
-2. Go to Actions > Run ReaScript
-3. Select `scripts/enable_reapy.py` from this repo (or create a new script with the contents below)
-   ```python
-   import reapy
-   reapy.config.enable_dist_api()
-   ```
-4. Restart REAPER
+Instead, this server ships a small bridge that speaks the same protocol on
+`127.0.0.1:2306` only, with no web interface. Install it once, **with REAPER
+closed** (REAPER rewrites its settings when it quits):
+
+```bash
+.venv/bin/reaper-mcp-setup
+```
+
+This writes `Scripts/reaper_mcp_bridge.py` in REAPER's resource folder,
+registers it as an action, and runs it from `Scripts/__startup.lua` every time
+REAPER starts (an existing `__startup.lua` is kept; the bridge is added as a
+marked block). On Linux it also points REAPER's ReaScript Python at the venv's
+`libpython` if Python is not configured yet. Then start REAPER.
+
+To remove it: `.venv/bin/reaper-mcp-setup --uninstall`.
+
+If you previously ran reapy's `enable_dist_api()` or `configure_reaper()`,
+`reaper-mcp-setup` removes what they left behind (the password-less web
+interface on port 2307, reapy's server action and its saved action ID): with
+those in place, `import reapy` could start reapy's own open server. It warns
+about any other password-less web interface it finds and leaves it alone.
+
+### Safety
+
+- The bridge only accepts connections from the same computer. Any program
+  on that computer, under any user account, can still connect and run code
+  as you inside REAPER, so use it on a computer you don't share.
+- `save_project`, `render_project`, `render_time_selection` and
+  `render_stems` refuse to replace an existing file unless called with
+  `overwrite=true` (saving without a path updates the tool's own copy in
+  `~/Documents/REAPER Projects`), and never write through a symlink.
+  `save_project`/`load_project` only take `.rpp` paths, `import_audio_file`
+  only audio/MIDI files, and `insert_track_template` only `.RTrackTemplate`
+  files.
+- Project, track and marker names are passed to the AI verbatim. Keep
+  per-tool approval on for file-writing tools when you open projects from
+  others.
 
 ## Usage
 
@@ -55,7 +85,7 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 ### With Claude Code
 
 ```bash
-claude mcp add reaper -- reaper-mcp-server
+claude mcp add reaper --scope user -- /path/to/reaper-mcp/.venv/bin/reaper-mcp-server
 ```
 
 ### Standalone

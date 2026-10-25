@@ -1,6 +1,10 @@
-import os
-
+from reaper_mcp.project_tools import absolute_path
 from reaper_mcp.reaper import RPR, get_project
+
+AUDIO_SUFFIXES = frozenset({
+    ".wav", ".wave", ".aif", ".aiff", ".flac", ".mp3", ".ogg", ".opus", ".wv", ".m4a",
+    ".mid", ".midi",
+})
 
 
 def import_audio_file(*, file_path: str, track_index: int, position: float = 0.0) -> dict:
@@ -8,8 +12,13 @@ def import_audio_file(*, file_path: str, track_index: int, position: float = 0.0
     Import an audio file onto a track at the given position (seconds).
     Supports all formats REAPER can read: wav, aiff, mp3, flac, ogg, etc.
     """
-    if not os.path.exists(file_path):
+    path = absolute_path(file_path)
+    if path.suffix.lower() not in AUDIO_SUFFIXES:
+        return {"success": False,
+                "error": f"not a supported audio file ({', '.join(sorted(AUDIO_SUFFIXES))})"}
+    if not path.is_file():
         return {"success": False, "error": f"File not found: {file_path}"}
+    file_path = str(path)
     project = get_project()
     track = project.tracks[track_index]
     # Select only this track, set cursor, then insert media at cursor

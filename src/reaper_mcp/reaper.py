@@ -7,11 +7,17 @@ attaches the ReaScript functions at runtime, so its own stub declares none of
 them), and gives tests a single seam to replace with a fake.
 """
 
+import importlib
 import logging
 from typing import Protocol, cast
 
 import reapy
 from reapy import reascript_api as _reascript_api
+from reapy.tools.network import client as _client
+from reapy.tools.network import machines as _machines
+
+from reaper_mcp.bridge import HOST as BRIDGE_HOST
+from reaper_mcp.bridge import PORT as BRIDGE_PORT
 
 logger = logging.getLogger("reaper_mcp.reaper")
 
@@ -140,17 +146,31 @@ def ensure_connected() -> None:
     if _connected:
         return
     try:
-        reapy.connect()
+        _connect_to_bridge()
         _connected = True
         logger.info("Connected to REAPER")
     except Exception as e:
         raise RuntimeError(
             f"Cannot connect to REAPER: {e}. "
-            "Make sure REAPER is running and the distant API is enabled. "
-            "To enable it: run the setup script (scripts/enable_reapy.py) or "
-            "in REAPER go to Actions > Run ReaScript, then run: "
-            "import reapy; reapy.config.enable_dist_api()"
+            "Make sure REAPER is running and the bridge is installed: "
+            "close REAPER, run reaper-mcp-setup once, then start REAPER again."
         ) from e
+
+
+def _connect_to_bridge() -> None:
+    """Connect reapy straight to the bridge on 127.0.0.1.
+
+    reapy.connect() would first ask REAPER's web interface for the server
+    port; the bridge listens on a fixed loopback port instead (see bridge.py),
+    so no web interface has to be enabled.
+    """
+    client = _client.Client(BRIDGE_PORT, BRIDGE_HOST)
+    _machines.CLIENTS["localhost"] = client
+    _machines.CLIENTS[None] = client
+    _machines.CLIENT = client
+    # Fills reascript_api in place with the functions REAPER exposes; RPR is
+    # this same module object.
+    importlib.reload(_reascript_api)
 
 
 def get_project() -> reapy.Project:

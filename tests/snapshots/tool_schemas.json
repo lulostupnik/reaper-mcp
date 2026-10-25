@@ -821,7 +821,7 @@
     }
   },
   "render_project": {
-    "description": "Render the entire project to a file.\nformat: wav, flac, mp3 (requires LAME), ogg.\nsample_rate: e.g. 44100, 48000, 96000.\nbit_depth: 16, 24, or 32 (WAV only; ignored for mp3/ogg/flac).\nchannels: 1 (mono) or 2 (stereo).",
+    "description": "Render the entire project to a file. An existing file is only replaced\nwith overwrite=true.\nformat: wav, flac, mp3 (requires LAME), ogg.\nsample_rate: e.g. 44100, 48000, 96000.\nbit_depth: 16, 24, or 32 (WAV only; ignored for mp3/ogg/flac).\nchannels: 1 (mono) or 2 (stereo).",
     "input_schema": {
       "properties": {
         "bit_depth": {
@@ -842,6 +842,11 @@
         "output_path": {
           "title": "Output Path",
           "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
         },
         "sample_rate": {
           "default": 48000,
@@ -898,7 +903,7 @@
     }
   },
   "render_stems": {
-    "description": "Render each track as a separate stem file by soloing each track individually.\ntrack_indices: list of track indices, or null to render all tracks.\nFiles are named after the track names in the output directory.",
+    "description": "Render each track as a separate stem file by soloing each track individually.\ntrack_indices: list of track indices, or null to render all tracks.\nFiles are named after the track names in the output directory. Existing\nfiles are only replaced with overwrite=true.",
     "input_schema": {
       "properties": {
         "bit_depth": {
@@ -914,6 +919,11 @@
         "output_directory": {
           "title": "Output Directory",
           "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
         },
         "sample_rate": {
           "default": 48000,
@@ -944,7 +954,7 @@
     }
   },
   "render_time_selection": {
-    "description": "Render a specific time range of the project to a file.",
+    "description": "Render a specific time range of the project to a file. An existing file\nis only replaced with overwrite=true.",
     "input_schema": {
       "properties": {
         "bit_depth": {
@@ -970,6 +980,11 @@
           "title": "Output Path",
           "type": "string"
         },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        },
         "sample_rate": {
           "default": 48000,
           "title": "Sample Rate",
@@ -990,9 +1005,14 @@
     }
   },
   "save_project": {
-    "description": "Save the current project. If no path is given, saves to ~/Documents/REAPER Projects.",
+    "description": "Save the current project as a .rpp file. If no path is given, saves to\n~/Documents/REAPER Projects/<project name>.rpp, replacing an earlier save there.\nAn existing file at a given path is only replaced with overwrite=true.",
     "input_schema": {
       "properties": {
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        },
         "project_path": {
           "default": "",
           "title": "Project Path",
