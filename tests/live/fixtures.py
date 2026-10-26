@@ -41,6 +41,16 @@ def reset(project: reapy.Project) -> None:
     master = project.master_track
     for i in reversed(range(master.n_fxs)):
         master.fxs[i].delete()
+    for key, value in (("D_VOL", 1.0), ("D_PAN", 0.0), ("B_MUTE", 0.0)):
+        master.set_info_value(key, value)
+    # Mix snapshots (and the tests' own keys) live in the project's ext state.
+    for section in ("reaper-mcp", "reaper-mcp-live"):
+        while True:
+            # (retval, project, extname, index, key, key size, value, value size)
+            found = RPR.EnumProjExtState(0, section, 0, "", 256, "", 16)
+            if not found[0]:
+                break
+            RPR.SetProjExtState(0, section, found[4], "")
     for i in reversed(range(RPR.CountTempoTimeSigMarkers(0))):
         RPR.DeleteTempoTimeSigMarker(0, i)
     # Deleting the last marker leaves its time signature as the project's, so
