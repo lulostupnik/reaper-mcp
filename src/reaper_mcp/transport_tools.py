@@ -161,8 +161,9 @@ def punch_mode() -> str | None:
 
 @no_undo(idempotent=True)
 def set_punch_mode(*, mode: str) -> dict:
-    """How recording starts and stops, for every project: REAPER keeps this
-    option on, in later projects and sessions too, until it is set back to normal.
+    """How recording starts and stops in this project. REAPER saves the mode
+    with the project, so it stays set here (also after reopening it) until it is
+    set back to normal; other projects keep their own, and new ones start normal.
     mode: "normal" (records from the moment you start until you stop) or
     "time_selection" (auto-punch: plays the whole time but only records inside the
     time selection; set it first with set_time_selection)."""

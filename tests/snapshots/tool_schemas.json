@@ -1429,7 +1429,7 @@
     }
   },
   "set_punch_mode": {
-    "description": "How recording starts and stops, for every project: REAPER keeps this\noption on, in later projects and sessions too, until it is set back to normal.\nmode: \"normal\" (records from the moment you start until you stop) or\n\"time_selection\" (auto-punch: plays the whole time but only records inside the\ntime selection; set it first with set_time_selection).",
+    "description": "How recording starts and stops in this project. REAPER saves the mode\nwith the project, so it stays set here (also after reopening it) until it is\nset back to normal; other projects keep their own, and new ones start normal.\nmode: \"normal\" (records from the moment you start until you stop) or\n\"time_selection\" (auto-punch: plays the whole time but only records inside the\ntime selection; set it first with set_time_selection).",
     "input_schema": {
       "properties": {
         "mode": {

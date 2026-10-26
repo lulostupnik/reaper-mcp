@@ -146,7 +146,8 @@ def _not_started(disarmed: list[int]) -> dict:
 
 
 def _global_warnings() -> list[str]:
-    """REAPER options, kept across projects, that change what a recording does."""
+    """Project settings (saved with the project, so easily left on from an earlier
+    session) that change what a recording does."""
     warnings = []
     mode = punch_mode()
     if mode not in ("normal", None):
