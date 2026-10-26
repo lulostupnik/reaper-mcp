@@ -6,6 +6,7 @@ tracks heard, so soloing and faders show up in the numbers.
 """
 
 import math
+import tempfile
 
 import pytest
 
@@ -109,6 +110,16 @@ def test_too_short_for_lufs_says_to_use_rms(band, call):
     assert result["measurement"]["integrated_lufs"] is None
     assert result["measurement"]["rms_db"] is not None
     assert "rms_db" in result["notes"][0]
+
+
+def test_a_lost_render_leaves_no_temp_file(band, call, monkeypatch, tmp_path):
+    """REAPER may have rendered the file when the reply was lost; nobody
+    would ever delete it (they were left in /tmp)."""
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "temp"))
+    (tmp_path / "temp").mkdir()
+    band.lose_request("Main_OnCommand", applied=True)
+    assert call("measure_track", track_index=0)["outcome"] == "uncertain"
+    assert list((tmp_path / "temp").iterdir()) == []
 
 
 def test_a_lost_render_puts_solo_and_time_selection_back_at_the_next_call(band, call):

@@ -200,6 +200,11 @@ def render_to_temp_file(sample_rate: int = 48000,
         with _time_selection(project, span):
             _render(target, format="wav", sample_rate=sample_rate, bit_depth=24, channels=2,
                     bounds=ENTIRE_PROJECT if span is None else TIME_SELECTION)
+    except BaseException:
+        # e.g. the render's reply was lost: REAPER may have written the file,
+        # and no caller will get its path to delete it.
+        target.unlink(missing_ok=True)
+        raise
     finally:
         errors = restore_render_settings(strings, numbers)
     if errors:
