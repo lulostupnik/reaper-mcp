@@ -7,6 +7,7 @@ from mcp.types import TextContent
 
 from reaper_mcp import bridge_token
 from reaper_mcp import reaper as reaper_module
+from reaper_mcp import undo as undo_module
 from reaper_mcp.server import mcp
 from tests.fake_reaper import FakeReaper, install
 
@@ -45,6 +46,7 @@ def private_state(request, monkeypatch, tmp_path):
     monkeypatch.setattr(reaper_module, "_lost", None)
     monkeypatch.setattr(reaper_module, "_owed", [])
     monkeypatch.setattr(reaper_module, "_owed_to", None)
+    monkeypatch.setattr(undo_module, "_held", False)
     monkeypatch.setattr(reaper_module, "_timeout", reaper_module.REQUEST_TIMEOUT_SECONDS)
 
 

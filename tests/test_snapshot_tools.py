@@ -3,6 +3,7 @@ whose SetProjExtState/GetProjExtState follow the API reference
 (tests/fake_reaper/ext_state.py)."""
 
 import pytest
+from reapy import reascript_api
 
 from reaper_mcp import mix_snapshots
 from reaper_mcp.mix_snapshots import EXT_NAME, INDEX_KEY, read_blob, write_blob
@@ -406,3 +407,20 @@ def test_save_refuses_a_mix_it_could_never_recall(mix, call):
     assert "Nothing was saved" in result["error"]
     assert call("list_mix_snapshots")["snapshots"] == []
     assert mix.dirty is False
+
+
+def test_the_mixer_is_read_in_one_held_pass_of_reapers_loop(mix, call, monkeypatch):
+    """Two calls per parameter, each waiting for REAPER's next pass otherwise:
+    11 s for 153 parameters on 7.69."""
+    held = []
+    original = reascript_api.TrackFX_GetParamNormalized
+
+    def reading(*args):
+        held.append(mix.held)
+        return original(*args)
+
+    monkeypatch.setattr(reascript_api, "TrackFX_GetParamNormalized", reading)
+    assert call("save_mix_snapshot", name="A")["success"] is True
+    assert call("compare_mix_snapshots", a="A")["success"] is True
+    assert held and all(held)
+    assert mix.held is False

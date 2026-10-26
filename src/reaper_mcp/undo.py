@@ -92,6 +92,8 @@ def kind_of(fn: Callable) -> Kind:
 # Descriptions of the undo blocks open right now, innermost last. Tools run
 # one at a time (server.py's lock), so a module-level stack is enough.
 _open_blocks: list[str] = []
+# Whether this server holds REAPER's main loop now (an undo block or main_loop_held).
+_held = False
 
 
 def describe(description: str) -> None:
@@ -122,9 +124,11 @@ def undo_block(description: str) -> Iterator[None]:
     _open_blocks.append(UNDO_PREFIX + description)
     opened: list[str] = []
     ok = False
+    global _held
     try:
-        if outermost:
+        if outermost and not _held:
             opened.append("hold")
+            _held = True
             hold_main_loop()
         opened.append("block")
         RPR.Undo_BeginBlock2(0)
@@ -138,7 +142,31 @@ def undo_block(description: str) -> Iterator[None]:
             name += FAILED_SUFFIX
         _run_or_owe(_closing_calls(name, opened))
         if "hold" in opened:
+            _held = False
             _release()
+
+
+@contextmanager
+def main_loop_held() -> Iterator[None]:
+    """Run the body's calls to REAPER in one pass of its main loop (see
+    reaper.hold_main_loop), for a tool that makes many calls outside an undo
+    block: each call otherwise waits for the next pass (about 35 ms each, seen
+    on 7.69). Nothing more happens when the loop is already held."""
+    global _held
+    if _held:
+        yield
+        return
+    ensure_connected()
+    lost = lost_call()
+    if lost is not None:
+        raise lost
+    _held = True
+    try:
+        hold_main_loop()
+        yield
+    finally:
+        _held = False
+        _release()
 
 
 def _release() -> None:

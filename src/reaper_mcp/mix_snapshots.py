@@ -252,10 +252,14 @@ def _capture_track(track, index: int | None, *, names: bool) -> dict:
 def capture_mix(name: str, *, names: bool = True) -> dict:
     """The mixer as it is now, as a snapshot named name. names=False leaves the
     parameter names out: enough to compare with or recall a saved snapshot."""
+    from reaper_mcp.undo import main_loop_held
+
     project = get_project()
-    tracks = [_capture_track(track, i, names=names) for i, track in enumerate(project.tracks)]
+    with main_loop_held():  # two calls per parameter: 11 s for 153 of them otherwise
+        tracks = [_capture_track(track, i, names=names) for i, track in enumerate(project.tracks)]
+        master = _capture_track(project.master_track, None, names=names)
     return {"version": VERSION, "name": name, "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "tracks": tracks, "master": _capture_track(project.master_track, None, names=names)}
+            "tracks": tracks, "master": master}
 
 
 def skipped_params(snapshot: dict) -> list[str]:
