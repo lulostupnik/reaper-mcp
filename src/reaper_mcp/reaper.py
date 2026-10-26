@@ -303,7 +303,12 @@ def ensure_connected() -> None:
 def _pay_debts() -> None:
     """Run the calls owed to this REAPER, best effort: one that fails is
     logged, not reported as the current tool's. Owed calls are dropped when
-    REAPER restarted, since the new one has nothing left open."""
+    REAPER restarted, since the new one has nothing left open.
+
+    Once a call is lost while paying, paying stops: the rest stay owed to
+    the next connection. That includes a debt that caught the loss itself
+    and owed itself again, which would otherwise be paid again at once,
+    forever."""
     global _lost
     if _owed and _owed_to != _bridge_instance:
         logger.info("REAPER restarted; dropping %d owed calls", len(_owed))
@@ -313,11 +318,13 @@ def _pay_debts() -> None:
         try:
             call()
         except OutcomeUncertain:
-            _lost = None  # the debt's loss, not the tool's
-            raise RuntimeError(
-                f"Cannot reach REAPER: {BUSY_HINT}. Nothing was sent for this tool.") from None
+            pass  # handled below, like a debt that caught the loss itself
         except Exception as e:
             logger.warning("an owed call to REAPER failed: %s", e)
+        if _lost is not None:
+            _lost = None  # the debt's loss, not the tool's
+            raise RuntimeError(
+                f"Cannot reach REAPER: {BUSY_HINT}. Nothing was sent for this tool.")
 
 
 def owe_on_reconnect(*calls: Callable[[], object]) -> None:

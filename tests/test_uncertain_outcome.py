@@ -147,6 +147,23 @@ def test_an_analysis_whose_render_is_lost_puts_the_render_settings_back_later(re
     assert reaper.project_info == mine
 
 
+def test_an_owed_restore_whose_call_is_lost_again_waits_for_the_next_tool_call(reaper, call):
+    """The owed restore catches its own lost call and owes itself again:
+    paying must stop there instead of retrying it forever."""
+    mine = {"RENDER_FILE": "/home/me/mixes", "RENDER_PATTERN": "$project-final"}
+    reaper.project_info.update(mine)
+    reaper.lose_request("Main_OnCommand", applied=True)
+    assert call("analyze_loudness")["outcome"] == "uncertain"
+    reaper.lose_request("GetSetProjectInfo_String", applied=False)
+
+    result = call("get_context")  # must return, not hang
+    assert result["success"] is False
+    assert "outcome" not in result
+    assert "Nothing was sent for this tool" in result["error"]
+    _settle(call)
+    assert {key: reaper.project_info[key] for key in mine} == mine
+
+
 def test_a_tool_that_swallows_the_lost_call_still_cannot_report_success(reaper):
     def careless() -> dict:
         try:
