@@ -93,6 +93,7 @@ they run, so a wrong ID is refused, not run.
 
 - [ ] src/reaper_mcp/actions.py: 40362 is "Item: Glue items, ignoring time selection" and 40131 is "Take: Crop to active take in items"; neither opens a dialog (glue on an unsaved project included: check where the glued file goes).
 - [ ] src/reaper_mcp/item_edit_tools.py:glue_items: after 40362 exactly one item spans the glued items' extent and is either new or the first original with a new take (note which: the fake does both, glue_reuses_first_item), the other originals are gone, and only_selected puts the user's item selection back (ValidatePtr2 skipping the glued-away items without a crash).
+- [ ] src/reaper_mcp/item_edit_tools.py:_glued: how far the glued item's end lands from the originals' extent (sample rounding of the rendered file); GLUE_TOLERANCE (1 ms) assumes well under 1 ms.
 - [ ] src/reaper_mcp/take_tools.py:crop_to_active_take: after 40131 CountTakes is 1, the kept take is the active one, and one undo brings the other takes back.
 - [ ] src/reaper_mcp/items.py:split: SplitMediaItem returns the right-hand item with a fresh GUID, the left keeps the original GUID, every take's D_STARTOFFS of the right part is the left's + cut * playrate, and "auto-crossfade on split" (Preferences > Editing) does not lengthen the left part (remove_silence finds pieces by time, so it would still work, but the kept edges would overlap the deleted parts).
 - [ ] src/reaper_mcp/items.py:split: which fades each side keeps after SplitMediaItem (the fake: left keeps fade-in, right keeps fade-out).

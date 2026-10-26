@@ -20,6 +20,9 @@ CHUNK_SIZE = 4 * 1024 * 1024
 GUID_LINE = re.compile(r"^(\s*(?:IGUID|GUID|POOLEDEVTS|FXID|EGUID)\s+)\{[0-9A-Fa-f-]{36}\}",
                        re.MULTILINE)
 EXTENT_TOLERANCE = 1e-6  # seconds
+# The glued item's length may be rounded to whole samples of the rendered file
+# (about 2e-5 s at 48 kHz), so its extent is matched more loosely.
+GLUE_TOLERANCE = 1e-3  # seconds
 
 
 def fresh_guids(chunk: str) -> str:
@@ -109,9 +112,9 @@ def _glued(track, span: tuple[float, float], *, before: set[str], glued: set[str
     start, end = span
     return [p for p in items.track_items(track)
             if (items.item_guid_of(p) not in before or items.item_guid_of(p) in glued)
-            and abs(item_value(p, "D_POSITION") - start) <= EXTENT_TOLERANCE
+            and abs(item_value(p, "D_POSITION") - start) <= GLUE_TOLERANCE
             and abs(item_value(p, "D_POSITION") + item_value(p, "D_LENGTH") - end)
-            <= EXTENT_TOLERANCE]
+            <= GLUE_TOLERANCE]
 
 
 def _take_guid(item) -> str | None:
@@ -150,6 +153,7 @@ def glue_items(*, items_to_glue: list[int | str], track_index: int | None = None
     found = _glued(track, (start, end), before=before, glued={ref.guid for ref in refs})
     if len(found) == 1 and _take_guid(found[0]) in takes_before:
         found = []  # an original still playing its old take: nothing was glued
+    if len(found) != 1:
         return {"success": False, "error": f"After gluing, {len(found)} items span "
                                            f"{start:g} to {end:g} s instead of one; check the "
                                            "track (undo takes the glue back)"}

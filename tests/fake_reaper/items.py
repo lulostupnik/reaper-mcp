@@ -258,6 +258,7 @@ class Items(Sources):
         if not chosen:
             return
         start, end = min(i.position for i in chosen), max(i.end for i in chosen)
+        end += self.glue_length_error
         path = str(self.tmp / f"glued-{len(self.commands):03d}.wav")
         glued = ItemState(self.new_pointer("MediaItem"), start, end - start, False,
                           source_file=path, selected=True)

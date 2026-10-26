@@ -91,6 +91,9 @@ class FakeReaper(Items, Session, Recording, Transport):
     # Glue keeps the first selected item (its GUID) and gives it the glued take,
     # instead of making a new item; real REAPER's way is not confirmed yet.
     glue_reuses_first_item: bool = False
+    # Seconds the glued item's length differs from the glued extent (REAPER may
+    # round it to whole samples of the rendered file).
+    glue_length_error: float = 0.0
     _pointer: int = 0
 
     def __post_init__(self) -> None:

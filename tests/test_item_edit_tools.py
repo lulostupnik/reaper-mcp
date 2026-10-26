@@ -151,6 +151,42 @@ def test_glue_items_reports_when_nothing_was_glued(reaper, call, monkeypatch):
     assert result["success"] is False and "instead of one" in result["error"]
 
 
+def test_glue_items_accepts_a_length_rounded_to_samples(reaper, call):
+    reaper.glue_length_error = 2e-5  # about one sample at 48 kHz
+    track = reaper.add_track("Vox")
+    first = _item(reaper, track, position=0.0, length=1.0)
+    second = _item(reaper, track, position=2.0, length=1.0)
+    result = call("glue_items", items_to_glue=[first.guid, second.guid])
+    assert result["success"] is True, result
+    [glued] = track.items
+    assert result["item"]["guid"] == glued.guid
+
+
+def test_glue_items_reports_when_no_item_spans_the_extent(reaper, call):
+    reaper.glue_length_error = 0.5
+    track = reaper.add_track("Vox")
+    first = _item(reaper, track, position=0.0, length=1.0)
+    second = _item(reaper, track, position=2.0, length=1.0)
+    result = call("glue_items", items_to_glue=[first.guid, second.guid])
+    assert result["success"] is False and "0 items span" in result["error"]
+
+
+def test_glue_items_reports_when_several_items_span_the_extent(reaper, call, monkeypatch):
+    track = reaper.add_track("Vox")
+    first = _item(reaper, track, position=0.0, length=1.0)
+    second = _item(reaper, track, position=2.0, length=1.0)
+    glue = type(reaper)._glue
+
+    def glue_twice(self, track):
+        glue(self, track)
+        [glued] = [i for i in track.items if i.selected]
+        _item(self, track, position=glued.position, length=glued.length)
+
+    monkeypatch.setattr(type(reaper), "_glue", glue_twice)
+    result = call("glue_items", items_to_glue=[first.guid, second.guid])
+    assert result["success"] is False and "2 items span" in result["error"]
+
+
 def test_glue_items_refuses_items_with_several_takes(reaper, call):
     track = reaper.add_track("Vox")
     item = _item(reaper, track)
