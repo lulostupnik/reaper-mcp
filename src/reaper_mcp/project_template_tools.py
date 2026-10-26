@@ -17,6 +17,7 @@ from reaper_mcp.project_tools import (
     current_tempo,
     project_file,
     time_signature_text,
+    unwritable,
 )
 from reaper_mcp.reaper import RPR, ensure_connected, get_project
 from reaper_mcp.template_tools import get_template_dir
@@ -132,6 +133,9 @@ def _template_file(folder: Path, name: str, suffix: str, *, overwrite: bool) -> 
         raise FileExistsError(f"a template named {stem!r} already exists ({path}); "
                               "pass overwrite=true to replace it")
     folder.mkdir(parents=True, exist_ok=True)
+    error = unwritable(folder)  # REAPER would answer with a modal error dialog
+    if error:
+        raise PermissionError(error)
     return path
 
 

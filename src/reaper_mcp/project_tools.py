@@ -1,4 +1,5 @@
 import os
+import tempfile
 import time
 from pathlib import Path
 
@@ -162,7 +163,14 @@ def save_project(*, project_path: str = "", overwrite: bool = False) -> dict:
         return {"success": False,
                 "error": f"{path} already exists; pass overwrite=true to replace it"}
     project_path = str(path)
-    os.makedirs(path.parent, exist_ok=True)
+    try:
+        os.makedirs(path.parent, exist_ok=True)
+    except OSError as e:
+        return {"success": False, "error": f"cannot create {path.parent} ({e.strerror or e}); "
+                                           "nothing was saved"}
+    error = unwritable(path.parent)
+    if error:
+        return {"success": False, "error": error}
     # reapy's Project.save takes a "force save as" flag, not a path.
     RPR.Main_SaveProjectEx(0, project_path, SAVE_AS_PROJECT_FILE)
     if not os.path.isfile(project_path):
@@ -177,6 +185,22 @@ def save_project(*, project_path: str = "", overwrite: bool = False) -> dict:
                 "error": f"REAPER could not save to {project_path}; the project still has "
                          "unsaved changes (check the folder's permissions and free space)"}
     return {"success": True, "project_path": project_path}
+
+
+def unwritable(folder: Path) -> str | None:
+    """Why REAPER could not write a file in folder, or None.
+
+    REAPER answers a save it cannot write with a modal error dialog ("Error
+    creating project file ... Does the path exist?"), which blocks every call
+    until someone clicks OK; so a scratch file is created (and removed) there
+    first, which also catches read-only mounts and ACLs.
+    """
+    try:
+        with tempfile.NamedTemporaryFile(dir=folder, prefix=".reaper-mcp-check-"):
+            pass
+    except OSError as e:
+        return f"cannot write in {folder} ({e.strerror or e}); nothing was saved"
+    return None
 
 
 def absolute_path(path: str) -> Path:

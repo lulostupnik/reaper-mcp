@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -181,6 +182,9 @@ class FakeReaper(Session, Recording, Transport):
     def Main_SaveProjectEx(self, project: int, path: str, options: int) -> None:
         """Without option 8 REAPER writes a copy and the open project keeps its file.
         Option 1 writes the selected tracks as a track template instead."""
+        if not os.access(Path(path).parent, os.W_OK):
+            raise AssertionError("REAPER would block on its modal 'Error creating project "
+                                 "file' dialog until someone clicks OK")
         self.saved_paths.append(path)
         if options & SAVE_TRACK_TEMPLATE:
             names = [t.name for t in self.tracks if t.selected]

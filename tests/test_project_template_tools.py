@@ -185,3 +185,21 @@ def test_save_track_template_does_not_overwrite_unless_asked(reaper, call):
     result = call("save_track_template", name="Voz")
     assert result["success"] is False and "overwrite=true" in result["error"]
     assert call("save_track_template", name="Voz", overwrite=True)["success"] is True
+
+
+@pytest.mark.parametrize(("tool", "folder"), [
+    ("save_project_template", "ProjectTemplates"),
+    ("save_track_template", "TrackTemplates"),
+])
+def test_saving_a_template_into_a_folder_reaper_cannot_write_is_refused_first(
+        reaper, call, tool, folder):
+    reaper.add_track("Vox").selected = True
+    templates = reaper.tmp / "resources" / folder
+    templates.mkdir(parents=True, exist_ok=True)
+    templates.chmod(0o555)
+    try:
+        result = call(tool, name="Vocal")
+    finally:
+        templates.chmod(0o755)
+    assert result["success"] is False and "cannot write in" in result["error"]
+    assert reaper.saved_paths == []

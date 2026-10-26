@@ -340,3 +340,18 @@ def test_load_project_refuses_while_there_are_unsaved_changes(reaper, call, tmp_
     assert result["success"] is False
     assert "save_project" in result["error"]
     assert reaper.opened == []
+
+
+def test_save_project_into_a_folder_reaper_cannot_write_is_refused_first(reaper, call, tmp_path):
+    """REAPER answers such a save with a modal error dialog that blocks every
+    call until someone clicks OK (seen on 7.69), so it is never asked to."""
+    folder = tmp_path / "read-only"
+    folder.mkdir()
+    folder.chmod(0o555)
+    try:
+        result = call("save_project", project_path=str(folder / "song.rpp"))
+    finally:
+        folder.chmod(0o755)
+    assert result["success"] is False
+    assert "cannot write in" in result["error"] and "nothing was saved" in result["error"]
+    assert reaper.saved_paths == []
