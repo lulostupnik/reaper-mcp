@@ -172,7 +172,8 @@ def test_render_stems_subset_duplicates_and_format(reaper, call, tmp_path):
 def test_render_stems_bad_index_renders_nothing(reaper, call, tmp_path):
     reaper.add_track("Kick")
     result = call("render_stems", output_directory=str(tmp_path), track_indices=[0, 5])
-    assert result == {"success": False, "error": "list index out of range"}
+    assert result == {"success": False, "error": "No track 5: there are 1 (indices start at 0); "
+                                                 "nothing was rendered"}
     assert reaper.commands == []
 
 
@@ -272,3 +273,42 @@ def test_render_refuses_reaper_wildcards_in_the_file_name(reaper, call, tmp_path
 
 def test_stem_names_differ_case_insensitively():
     assert _stem_names(["Kick", "kick", "KICK"]) == ["Kick", "kick_2", "KICK_3"]
+
+
+def test_render_to_temp_file_over_a_span_restores_the_time_selection(reaper):
+    reaper.time_selection = (5.0, 6.0)
+    path = Path(render_to_temp_file(span=(1.0, 3.0)))
+    assert sf.info(str(path)).duration == pytest.approx(2.0)
+    assert reaper.render_settings[0]["RENDER_BOUNDSFLAG"] == 2.0
+    assert reaper.time_selection == (5.0, 6.0)
+    assert reaper.project_info["RENDER_BOUNDSFLAG"] == 0.0  # put back
+    path.unlink()
+
+
+@pytest.mark.parametrize(("transport", "word"), [("recording", "recording"),
+                                                  ("playing", "playing")])
+@pytest.mark.parametrize(("tool", "args"), [
+    ("render_project", {"output_path": "mix.wav"}),
+    ("render_time_selection", {"output_path": "part.wav", "start": 0.0, "end": 1.0}),
+    ("render_stems", {}),
+])
+def test_render_tools_refuse_while_playing_or_recording(reaper, call, tmp_path, tool, args,
+                                                         transport, word):
+    reaper.add_track("Kick").info["I_SOLO"] = 0.0
+    reaper.transport = transport
+    args = {key: str(tmp_path / value) if key == "output_path" else value
+            for key, value in args.items()}
+    if tool == "render_stems":
+        args["output_directory"] = str(tmp_path)
+    result = call(tool, **args)
+    assert result["success"] is False and f"REAPER is {word}" in result["error"]
+    assert (reaper.commands, list(tmp_path.iterdir())) == ([], [])
+    assert reaper.tracks[0].info["I_SOLO"] == 0.0
+
+
+@pytest.mark.parametrize("bad", [1, -1])
+def test_render_stems_refuses_a_bad_track_index_before_rendering(reaper, call, tmp_path, bad):
+    reaper.add_track("Kick")
+    result = call("render_stems", output_directory=str(tmp_path), track_indices=[0, bad])
+    assert result["success"] is False and f"No track {bad}" in result["error"]
+    assert reaper.commands == []

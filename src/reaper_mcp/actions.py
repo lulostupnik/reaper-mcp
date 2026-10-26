@@ -36,6 +36,8 @@ TOGGLE_METRONOME = Action(40364, "Options: Toggle metronome", verified=True)
 RECORD_MODE_NORMAL = Action(40252, "Record: Set record mode to normal")
 RECORD_MODE_TIME_SELECTION = Action(40076, "Record: Set record mode to time selection auto-punch")
 RECORD_MODE_ITEMS = Action(40253, "Record: Set record mode to selected item auto-punch")
+GLUE_ITEMS = Action(40362, "Item: Glue items, ignoring time selection")
+CROP_TO_ACTIVE_TAKE = Action(40131, "Take: Crop to active take in items")
 
 
 def action_name(command: int) -> str | None:

@@ -314,3 +314,10 @@ def test_a_restore_failure_after_a_refusal_reads_as_one_message(regions, call, t
         "REAPER reported the same output file more than once; render_regions cannot tell "
         "when such a render is done; render settings not restored: RENDER_FILE: client "
         "disconnected")
+
+
+def test_render_regions_refuses_while_recording(regions, call, tmp_path):
+    regions.transport = "recording"
+    result = call("render_regions", output_directory=str(tmp_path))
+    assert result["success"] is False and "REAPER is recording" in result["error"]
+    assert (regions.commands, regions.project_info) == ([], SAVED)

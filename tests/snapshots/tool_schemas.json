@@ -1,11 +1,23 @@
 {
   "add_fx": {
-    "description": "Add an FX plugin to a track. Works for both instruments (VSTi) and effects (VST/AU).\nUse the exact plugin name as shown in REAPER's FX browser.\nBuilt-in Cockos plugins: ReaEQ, ReaComp, ReaDelay, ReaVerb, ReaLimit, ReaSynth,\nReaSamplOmatic5000, ReaTune, ReaGate, ReaFIR, ReaXcomp.",
+    "description": "Add an FX plugin to a track. Works for both instruments (VSTi) and effects (VST/AU).\nUse the plugin name as shown in REAPER's FX browser, or as list_installed_fx gives it.\nBuilt-in Cockos plugins: ReaEQ, ReaComp, ReaDelay, ReaVerb, ReaLimit, ReaSynth,\nReaSamplOmatic5000, ReaTune, ReaGate, ReaFIR, ReaXcomp.\nposition: where in the FX chain (0 = first, processed before the others);\ndefault: at the end.",
     "input_schema": {
       "properties": {
         "fx_name": {
           "title": "Fx Name",
           "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
         },
         "track_index": {
           "title": "Track Index",
@@ -17,6 +29,27 @@
         "fx_name"
       ],
       "title": "add_fxArguments",
+      "type": "object"
+    }
+  },
+  "add_marker": {
+    "description": "Add a marker at position (seconds) with an optional name, e.g. \"Chorus\".\nREAPER gives it the next free number.",
+    "input_schema": {
+      "properties": {
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "position": {
+          "title": "Position",
+          "type": "number"
+        }
+      },
+      "required": [
+        "position"
+      ],
+      "title": "add_markerArguments",
       "type": "object"
     }
   },
@@ -105,6 +138,32 @@
         "pan"
       ],
       "title": "add_pan_automationArguments",
+      "type": "object"
+    }
+  },
+  "add_region": {
+    "description": "Add a region from start to end (seconds) with an optional name, e.g.\n\"Verse 1\". Regions mark song parts and can be rendered one by one.",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "title": "End",
+          "type": "number"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "start": {
+          "title": "Start",
+          "type": "number"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "add_regionArguments",
       "type": "object"
     }
   },
@@ -312,7 +371,7 @@
     }
   },
   "check_input_level": {
-    "description": "Listen to an armed track's input for a few seconds (0.5 to 10) and say whether\nthe level is right to record: \"no signal\" (with things to check), \"too quiet\",\n\"good\" or \"clipping\". Play or sing as loud as you will in the take while it\nlistens. Reports the peak level in dBFS (aim for about -12). Never starts recording.\ntrack_index: the track to check; by default the only armed track.",
+    "description": "Listen to an armed track's input for a few seconds (0.5 to 10) and say whether\nthe level is right to record: \"no signal\" (with things to check), \"too quiet\",\n\"good\" or \"clipping\". Play or sing as loud as you will in the take while it\nlistens. Reports the peak level in dBFS (aim for about -12) and the average\nlevel: an average far below the peak means the peak was a short loud moment,\nsuch as one bump or plosive, and the rest was quieter. Never starts recording.\ntrack_index: the track to check; by default the only armed track.",
     "input_schema": {
       "properties": {
         "seconds": {
@@ -334,6 +393,146 @@
         }
       },
       "title": "check_input_levelArguments",
+      "type": "object"
+    }
+  },
+  "clear_automation": {
+    "description": "Delete a track's volume or pan automation points between start and end (seconds).\nPoints are put at start and end holding the values the curve had there, so\nthe automation before and after the range does not change; the range then\ngoes in a straight line between those two values.",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "title": "End",
+          "type": "number"
+        },
+        "envelope": {
+          "default": "volume",
+          "title": "Envelope",
+          "type": "string"
+        },
+        "start": {
+          "title": "Start",
+          "type": "number"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "start",
+        "end"
+      ],
+      "title": "clear_automationArguments",
+      "type": "object"
+    }
+  },
+  "compare_measurements": {
+    "description": "Compare two measure_track replies (before and after a mix change) and say\nhonestly whether the change did what was intended. before/after: the whole\nmeasure_track replies, unchanged. expected_change_db: e.g.\n3 for \"3 dB louder\", -2 for \"2 dB quieter\"; leave it out to just report the\nchanges. metric: integrated_lufs (default; how loud it sounds), rms_db or\nsample_peak_dbfs. verdict: \"verified\" (within tolerance_db of the expected\nchange), \"not_verified\", or \"cannot_verify\" (different tracks or ranges, or no\nreading, e.g. silence). Changes nothing in REAPER.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "additionalProperties": true,
+          "title": "After",
+          "type": "object"
+        },
+        "before": {
+          "additionalProperties": true,
+          "title": "Before",
+          "type": "object"
+        },
+        "expected_change_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Change Db"
+        },
+        "metric": {
+          "default": "integrated_lufs",
+          "title": "Metric",
+          "type": "string"
+        },
+        "tolerance_db": {
+          "default": 1.0,
+          "title": "Tolerance Db",
+          "type": "number"
+        }
+      },
+      "required": [
+        "before",
+        "after"
+      ],
+      "title": "compare_measurementsArguments",
+      "type": "object"
+    }
+  },
+  "compare_mix_snapshots": {
+    "description": "What differs between two mix snapshots, track by track: volume, pan, mute,\nsolo, FX on/off and FX parameters (shown as the plug-in displays them when\nthe FX is still there). b defaults to \"current\", the mix as it is now, so\ncompare_mix_snapshots(a=\"before EQ\") shows what changed since that save.\nAn FX with many changed parameters (a preset change) is summed up in one\nrow; detail=true lists every parameter. At most 100 rows are listed.",
+    "input_schema": {
+      "properties": {
+        "a": {
+          "title": "A",
+          "type": "string"
+        },
+        "b": {
+          "default": "current",
+          "title": "B",
+          "type": "string"
+        },
+        "detail": {
+          "default": false,
+          "title": "Detail",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a"
+      ],
+      "title": "compare_mix_snapshotsArguments",
+      "type": "object"
+    }
+  },
+  "copy_fx": {
+    "description": "Copy an FX, with its current settings, to a track (the same track works too).\nto_position: the copy's place in that chain, 0 = first; default: the end.",
+    "input_schema": {
+      "properties": {
+        "fx_index": {
+          "title": "Fx Index",
+          "type": "integer"
+        },
+        "to_position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Position"
+        },
+        "to_track_index": {
+          "title": "To Track Index",
+          "type": "integer"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "fx_index",
+        "to_track_index"
+      ],
+      "title": "copy_fxArguments",
       "type": "object"
     }
   },
@@ -544,6 +743,127 @@
       "type": "object"
     }
   },
+  "crop_to_active_take": {
+    "description": "Delete every take of an item except the active one (undo brings them\nback; the files stay on disk). Choose the take first with set_active_take.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "crop_to_active_takeArguments",
+      "type": "object"
+    }
+  },
+  "delete_item": {
+    "description": "Delete an item from its track (undo brings it back).\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "delete_itemArguments",
+      "type": "object"
+    }
+  },
+  "delete_marker": {
+    "description": "Delete a marker or region (the audio under a region stays).\nmarker: its number as REAPER shows it, its name, or its GUID.\nkind: \"marker\" or \"region\", only needed when both have that number or name.",
+    "input_schema": {
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "marker": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Marker"
+        }
+      },
+      "required": [
+        "marker"
+      ],
+      "title": "delete_markerArguments",
+      "type": "object"
+    }
+  },
+  "delete_mix_snapshot": {
+    "description": "Delete a saved mix snapshot (the mix itself is not touched).",
+    "input_schema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "delete_mix_snapshotArguments",
+      "type": "object"
+    }
+  },
   "delete_track": {
     "description": "Delete a track.\ntrack_index: the track's index, or its GUID from list_tracks (safer: a GUID\nstill names the same track after tracks were added, deleted or moved).",
     "input_schema": {
@@ -575,8 +895,67 @@
       "type": "object"
     }
   },
+  "duplicate_item": {
+    "description": "Copy an item (with all its takes, fades and settings) as a new item with\nnew GUIDs. position: where the copy starts (seconds; default right after the\noriginal). dest_track_index: the track for the copy (default the same track).\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "dest_track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dest Track Index"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "duplicate_itemArguments",
+      "type": "object"
+    }
+  },
   "edit_audio_item": {
-    "description": "Trim an audio item and/or add fades. All values in seconds.\nstart_trim: seconds to remove from the beginning.\nend_trim: seconds to remove from the end.\nfade_in/fade_out: fade length in seconds.",
+    "description": "Legacy: prefer edit_item (exact start/end and fades, items named by GUID).\nTrim an audio item by relative amounts and/or add fades. All values in seconds.\nstart_trim: seconds to remove from the beginning.\nend_trim: seconds to remove from the end.\nfade_in/fade_out: fade length in seconds. Unlike edit_item, 0 here leaves\nthe fade as it is (edit_item fade_in=0 removes it).",
     "input_schema": {
       "properties": {
         "end_trim": {
@@ -616,6 +995,206 @@
       "type": "object"
     }
   },
+  "edit_item": {
+    "description": "Set an item's settings to exact values; anything left out stays as it is.\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nstart/end: where the item starts/ends (project seconds); the audio stays where\nit is in time, so this trims (or uncovers) the item's edges. To move the\nwhole item use move_item.\nfade_in/fade_out: fade length in seconds, 0 removes the fade.\nvolume_db: the item's own volume, the one to use for \"make this louder/quieter\".\ntake_volume_db: the active take's volume, which normalize_item sets; usually\nleave it alone. Both add up, and the track's volume comes on top.\nmuted, locked: locked=false unlocks a locked item (and allows the other changes).",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "fade_in": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fade In"
+        },
+        "fade_out": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fade Out"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "locked": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locked"
+        },
+        "muted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Muted"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "take_volume_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Take Volume Db"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        },
+        "volume_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume Db"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "edit_itemArguments",
+      "type": "object"
+    }
+  },
+  "edit_send": {
+    "description": "Change a send (see list_sends): volume_db, pan (-1 left .. 1 right), muted, and\nmode: post_fader (the usual: follows the track's fader, for reverb/effect\nsends), pre_fader (ignores the track's fader, for a headphone/monitor mix) or\npre_fx (before the track's FX and fader). Only the values given change.",
+    "input_schema": {
+      "properties": {
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
+        "muted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Muted"
+        },
+        "pan": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pan"
+        },
+        "send_index": {
+          "title": "Send Index",
+          "type": "integer"
+        },
+        "source_track_index": {
+          "title": "Source Track Index",
+          "type": "integer"
+        },
+        "volume_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume Db"
+        }
+      },
+      "required": [
+        "source_track_index",
+        "send_index"
+      ],
+      "title": "edit_sendArguments",
+      "type": "object"
+    }
+  },
   "get_audio_setup": {
     "description": "The audio interface REAPER is using: audio system (JACK, ALSA...), input\nand output device, sample rate, block size, sample format (bits), whether audio is\nrunning, the input and output channels (numbered from 1, with names) and the\ninput/output latency in samples and milliseconds. The device cannot be\nchanged through the API: how_to_change says where to change it in REAPER.",
     "input_schema": {
@@ -629,6 +1208,59 @@
     "input_schema": {
       "properties": {},
       "title": "get_contextArguments",
+      "type": "object"
+    }
+  },
+  "get_envelope_points": {
+    "description": "List a track's volume or pan automation points: time (seconds), value (dB for\nvolume; -1 left .. +1 right for pan) and shape. start/end: only points in that\ntime range. Also says the track's automation mode.",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "envelope": {
+          "default": "volume",
+          "title": "Envelope",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index"
+      ],
+      "title": "get_envelope_pointsArguments",
+      "type": "object"
+    }
+  },
+  "get_folder_structure": {
+    "description": "The project's folders: for every track its level (0 = top), the index of\nthe folder track it is in (parent_index, null at top level) and whether it\nis a folder itself.",
+    "input_schema": {
+      "properties": {},
+      "title": "get_folder_structureArguments",
       "type": "object"
     }
   },
@@ -693,6 +1325,79 @@
       "type": "object"
     }
   },
+  "glue_items": {
+    "description": "Glue items of one track into a single item playing a new audio file that\nREAPER renders (into the project's recording folder). The originals are\nreplaced; gaps between them become silence. What you hear is baked into the\nnew file: the active take only, its take FX, item and take volume, and fades.\nItems with more than one take are refused (crop_to_active_take first). Rarely\nneeded: splits, moves and remove_silence work without gluing.\nitems_to_glue: the items' GUIDs from list_items (preferred), or their\nindices on track_index.",
+    "input_schema": {
+      "properties": {
+        "items_to_glue": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Items To Glue",
+          "type": "array"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "items_to_glue"
+      ],
+      "title": "glue_itemsArguments",
+      "type": "object"
+    }
+  },
+  "go_to_marker": {
+    "description": "Move the edit cursor to a marker, or to the start of a region (e.g. \"Chorus\").\nmarker: its number as REAPER shows it, its name, or its GUID.\nkind: \"marker\" or \"region\", only needed when both have that number or name.",
+    "input_schema": {
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "marker": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Marker"
+        }
+      },
+      "required": [
+        "marker"
+      ],
+      "title": "go_to_markerArguments",
+      "type": "object"
+    }
+  },
   "import_audio_file": {
     "description": "Import an audio file onto a track at the given position (seconds).\nSupports all formats REAPER can read: wav, aiff, mp3, flac, ogg, etc.",
     "input_schema": {
@@ -747,11 +1452,98 @@
       "type": "object"
     }
   },
+  "list_fx_presets": {
+    "description": "List the presets of an FX plugin by name (in order: a preset's place in the\nlist, from 0, is the preset_index load_fx_preset takes), and the one showing now.\nOnly call it when the user wants to pick a preset: REAPER can only name a\npreset by loading it, so each preset is loaded in turn and the plugin is then\nput back as it was (its preset and parameters). It is one undo step, in case a\nplugin keeps more state (e.g. a loaded sample); REAPER's preset menu may still\nname the last preset looked at.",
+    "input_schema": {
+      "properties": {
+        "fx_index": {
+          "title": "Fx Index",
+          "type": "integer"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "fx_index"
+      ],
+      "title": "list_fx_presetsArguments",
+      "type": "object"
+    }
+  },
+  "list_installed_fx": {
+    "description": "Find installed plugins (VST, VST3, JS, CLAP, AU) by their name, tolerating\ntypos: query=\"reacomp\" or \"valhala\" finds them. It matches names only, not\ncategories: \"comp\" finds plugins with \"comp\" in the name, but \"eq\" will not\nfind an EQ called \"Pro-Q\". Empty query lists them all (up to limit).\ninstrument is true/false for VST, VST3 and AU, null (unknown) for CLAP, false\nfor JS; instruments_only keeps true and null. LV2 plugins are not listed, nor\nplugins REAPER has not scanned yet (Options > Preferences > Plug-ins).\nPass a result's add_fx_name to add_fx.",
+    "input_schema": {
+      "properties": {
+        "instruments_only": {
+          "default": false,
+          "title": "Instruments Only",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 50,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        }
+      },
+      "title": "list_installed_fxArguments",
+      "type": "object"
+    }
+  },
+  "list_items": {
+    "description": "List the items of every track, or of one track: GUID, track, item index,\nposition and length (seconds), muted, locked, take count, the active take's\nname and whether it is MIDI; on REAPER 7 fixed-lane tracks also the item's\nlane and whether that lane plays. detail=true adds fade lengths (manual and\nautomatic crossfade, seconds), item volume (dB), and the active take's start\noffset, playrate, volume (dB) and source file.",
+    "input_schema": {
+      "properties": {
+        "detail": {
+          "default": false,
+          "title": "Detail",
+          "type": "boolean"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "title": "list_itemsArguments",
+      "type": "object"
+    }
+  },
+  "list_markers": {
+    "description": "List the project's markers and regions in timeline order, each with the\nnumber REAPER shows on it, its name, position (regions: start, end, length)\nand GUID. Other marker tools take the number, the name or the GUID.",
+    "input_schema": {
+      "properties": {},
+      "title": "list_markersArguments",
+      "type": "object"
+    }
+  },
   "list_master_fx": {
     "description": "List all FX plugins on the master track.",
     "input_schema": {
       "properties": {},
       "title": "list_master_fxArguments",
+      "type": "object"
+    }
+  },
+  "list_mix_snapshots": {
+    "description": "List the mix snapshots saved in this project, oldest first.",
+    "input_schema": {
+      "properties": {},
+      "title": "list_mix_snapshotsArguments",
       "type": "object"
     }
   },
@@ -764,7 +1556,7 @@
     }
   },
   "list_sends": {
-    "description": "List all sends from a track: the destination track (index, GUID, name),\nvolume in dB, pan and mute.",
+    "description": "List all sends from a track: the destination track (index, GUID, name),\nvolume in dB, pan, mute and mode (post_fader, pre_fader or pre_fx).",
     "input_schema": {
       "properties": {
         "track_index": {
@@ -776,6 +1568,41 @@
         "track_index"
       ],
       "title": "list_sendsArguments",
+      "type": "object"
+    }
+  },
+  "list_takes": {
+    "description": "List an item's takes: index, name, GUID, which one is active (plays),\nsource file, start offset, playrate and take volume (dB). On a REAPER 7\nfixed-lane track also the overlapping lanes (lane number, whether it plays,\nthe lane item's GUID).\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "list_takesArguments",
       "type": "object"
     }
   },
@@ -812,16 +1639,36 @@
     }
   },
   "load_fx_preset": {
-    "description": "Load a saved preset by name for an FX plugin.",
+    "description": "Load a preset for an FX plugin, by preset_name (as REAPER's preset menu\nshows it) or by preset_index (its place in list_fx_presets' list, 0 = first;\nuse it for presets the plugin ships with if the name is not found).\nThe preset replaces the plugin's current settings (undo brings them back).",
     "input_schema": {
       "properties": {
         "fx_index": {
           "title": "Fx Index",
           "type": "integer"
         },
+        "preset_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset Index"
+        },
         "preset_name": {
-          "title": "Preset Name",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset Name"
         },
         "track_index": {
           "title": "Track Index",
@@ -830,8 +1677,7 @@
       },
       "required": [
         "track_index",
-        "fx_index",
-        "preset_name"
+        "fx_index"
       ],
       "title": "load_fx_presetArguments",
       "type": "object"
@@ -853,6 +1699,256 @@
       "type": "object"
     }
   },
+  "measure_track": {
+    "description": "Measure how loud one track is, after its FX and fader: integrated loudness\n(LUFS), RMS level and sample peak (dBFS), by rendering it soloed to a temp\nfile. Whole project by default, or start/end in seconds (a 20-30 s stretch,\ne.g. the chorus, is much quicker than a whole song). The solo and mute\nbuttons are left exactly as they were. Anything the track sends to (a reverb\ntrack) and the master volume are included. The master track's FX (a limiter)\nare bypassed for the measurement and switched back on afterwards, so a fader\nmove shows up 1:1; include_master_fx=true measures through them.\ntrack_index: the track's index, or its GUID from list_tracks.\nKeep the whole reply: give it to compare_measurements with a later one to\ncheck a change (\"is the vocal 3 dB louder now?\"). Refused while REAPER is\nplaying or recording.",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "include_master_fx": {
+          "default": false,
+          "title": "Include Master Fx",
+          "type": "boolean"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "track_index"
+      ],
+      "title": "measure_trackArguments",
+      "type": "object"
+    }
+  },
+  "move_fx": {
+    "description": "Move an FX to another place in the chain, or to another track (with its settings).\nto_position: its new place in the chain, 0 = first (processed first); default:\nthe end of the destination chain. to_track_index: the track to move it to\n(default: the same track; then to_position is required).",
+    "input_schema": {
+      "properties": {
+        "fx_index": {
+          "title": "Fx Index",
+          "type": "integer"
+        },
+        "to_position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Position"
+        },
+        "to_track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Track Index"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "fx_index"
+      ],
+      "title": "move_fxArguments",
+      "type": "object"
+    }
+  },
+  "move_item": {
+    "description": "Move a whole item (its audio with it) in time and/or to another track.\nposition: the new start (seconds); dest_track_index: the track to move it to.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "dest_track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dest Track Index"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "move_itemArguments",
+      "type": "object"
+    }
+  },
+  "move_marker": {
+    "description": "Move a marker to position (seconds); for a region, position is its new\nstart and it keeps its length unless end is given.\nmarker: its number as REAPER shows it, its name, or its GUID. Its number\ndoes not change. kind: \"marker\" or \"region\", only needed when both have\nthat number or name.",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "marker": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Marker"
+        },
+        "position": {
+          "title": "Position",
+          "type": "number"
+        }
+      },
+      "required": [
+        "marker",
+        "position"
+      ],
+      "title": "move_markerArguments",
+      "type": "object"
+    }
+  },
+  "move_track_into_folder": {
+    "description": "Put a track (with anything inside it) into a folder, as its last track.\nfolder_track_index: the folder track. A normal track (one with audio, say)\nis refused unless allow_new_folder is true; then it becomes a folder.\nThe track's sound then goes through the folder track (its volume, mute and FX\napply), unless the track only feeds a bus.",
+    "input_schema": {
+      "properties": {
+        "allow_new_folder": {
+          "default": false,
+          "title": "Allow New Folder",
+          "type": "boolean"
+        },
+        "folder_track_index": {
+          "title": "Folder Track Index",
+          "type": "integer"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "folder_track_index"
+      ],
+      "title": "move_track_into_folderArguments",
+      "type": "object"
+    }
+  },
+  "move_track_out_of_folder": {
+    "description": "Take a track (with anything inside it) out of its folder: it moves up one level,\nright after the folder. A folder left empty becomes a normal track.",
+    "input_schema": {
+      "properties": {
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index"
+      ],
+      "title": "move_track_out_of_folderArguments",
+      "type": "object"
+    }
+  },
   "new_project_from_template": {
     "description": "Start a new project from a project template, in a new project tab (the\ncurrent project stays open in its tab). template: a name from\nlist_project_templates, or the path of a .RPP file. The new project is\nuntitled: save it with save_project before recording. Each call opens\nanother tab, so do not retry it just to be sure.",
     "input_schema": {
@@ -866,6 +1962,58 @@
         "template"
       ],
       "title": "new_project_from_templateArguments",
+      "type": "object"
+    }
+  },
+  "normalize_item": {
+    "description": "Normalize an audio item by setting its active take's volume so the\nrecording, together with the item's own volume, reaches target_db.\nmode \"peak\": loudest sample at target_db dBFS (default -1). mode \"lufs\":\nintegrated loudness at target_db LUFS (default -18, a comfortable level for\nmixing). Take FX and the track's volume still apply on top. Only the take\nvolume changes; the file is untouched.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "mode": {
+          "default": "peak",
+          "title": "Mode",
+          "type": "string"
+        },
+        "target_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Db"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "normalize_itemArguments",
       "type": "object"
     }
   },
@@ -888,6 +2036,27 @@
     "input_schema": {
       "properties": {},
       "title": "play_projectArguments",
+      "type": "object"
+    }
+  },
+  "recall_mix_snapshot": {
+    "description": "Put the mixer back the way a saved snapshot has it: volume, pan, mute, solo,\nand (include_fx=true) the on/off state and parameters of each FX that was\nthere when it was saved. Only that: FX, sends and tracks added since stay as\nthey are (bypass_fx/remove_fx, or undo, take those back), and are listed in\nthe reply. Tracks are found by GUID, so moved tracks are still matched;\ntracks deleted since are reported. The snapshot is checked first and nothing\nis changed if any value in it is out of range. One undo step: undo takes the\nwhole recall back.",
+    "input_schema": {
+      "properties": {
+        "include_fx": {
+          "default": true,
+          "title": "Include Fx",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "recall_mix_snapshotArguments",
       "type": "object"
     }
   },
@@ -961,6 +2130,106 @@
       "type": "object"
     }
   },
+  "remove_silence": {
+    "description": "Remove the silent parts of an audio item: it is split around each stretch\nquieter than threshold_db (RMS dBFS of the recording, before item volume)\nlasting at least min_silence seconds, and those pieces are deleted.\npadding: seconds of quiet kept next to the sound, so breaths and note tails\nare not cut. fade: a short fade (seconds) where sound was cut, against clicks.\ndry_run=true only reports what would be removed (ranges, total seconds and how\nmany pieces would stay). Raise threshold_db (e.g. -35) for a noisy recording;\nlower it (e.g. -55) if quiet notes get cut. Only the active take is analyzed.\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nReturns the removed time ranges and the GUIDs of the pieces kept.",
+    "input_schema": {
+      "properties": {
+        "dry_run": {
+          "default": false,
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "fade": {
+          "default": 0.01,
+          "title": "Fade",
+          "type": "number"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "min_silence": {
+          "default": 0.4,
+          "title": "Min Silence",
+          "type": "number"
+        },
+        "padding": {
+          "default": 0.1,
+          "title": "Padding",
+          "type": "number"
+        },
+        "threshold_db": {
+          "default": -45.0,
+          "title": "Threshold Db",
+          "type": "number"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "remove_silenceArguments",
+      "type": "object"
+    }
+  },
+  "rename_marker": {
+    "description": "Rename a marker or region (song parts such as \"Chorus\" are usually regions).\nmarker: its number as REAPER shows it, its current name, or its GUID.\nkind: \"marker\" or \"region\", only needed when both have that number or name.",
+    "input_schema": {
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "marker": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Marker"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "marker",
+        "name"
+      ],
+      "title": "rename_markerArguments",
+      "type": "object"
+    }
+  },
   "rename_track": {
     "description": "Rename a track.",
     "input_schema": {
@@ -983,7 +2252,7 @@
     }
   },
   "render_project": {
-    "description": "Render the entire project to a file. An existing file is only replaced\nwith overwrite=true.\nformat: wav, flac, mp3 (requires LAME), ogg.\nsample_rate: e.g. 44100, 48000, 96000.\nbit_depth: 16, 24, or 32 (WAV only; ignored for mp3/ogg/flac).\nchannels: 1 (mono) or 2 (stereo).",
+    "description": "Render the entire project to a file. An existing file is only replaced\nwith overwrite=true. Refused while REAPER plays or records.\nformat: wav, flac, mp3 (requires LAME), ogg.\nsample_rate: e.g. 44100, 48000, 96000.\nbit_depth: 16, 24, or 32 (WAV only; ignored for mp3/ogg/flac).\nchannels: 1 (mono) or 2 (stereo).",
     "input_schema": {
       "properties": {
         "bit_depth": {
@@ -1024,7 +2293,7 @@
     }
   },
   "render_regions": {
-    "description": "Render each region of the project to its own file, using the project's\nrender settings.\npattern: file name pattern; $region, $regionnumber, $project are available,\n    and it may name subdirectories. REAPER numbers names that would clash\n    (\"take-001\", \"take-002\").\nselected_only: render only the regions selected in REAPER; with none\n    selected, REAPER renders all of them.\ndry_run: return the project's regions and the files REAPER would write,\n    without rendering. It sets the render settings and restores them.\nFails without rendering if any output file already exists; never deletes files.\nBlocks until every file is written; status is then \"complete\". Gives up\nwith \"stalled\" once the files stop growing for stall_timeout_seconds\n(longer while REAPER holds a scratch file), or \"timeout\" after\ntimeout_seconds in total.\nRegion \"index\" is the position among regions, as in get_project_info.",
+    "description": "Render each region of the project to its own file, using the project's\nrender settings.\npattern: file name pattern; $region, $regionnumber, $project are available,\n    and it may name subdirectories. REAPER numbers names that would clash\n    (\"take-001\", \"take-002\").\nselected_only: render only the regions selected in REAPER; with none\n    selected, REAPER renders all of them.\ndry_run: return the project's regions and the files REAPER would write,\n    without rendering. It sets the render settings and restores them.\nFails without rendering if any output file already exists, or while REAPER\nplays or records; never deletes files.\nBlocks until every file is written; status is then \"complete\". Gives up\nwith \"stalled\" once the files stop growing for stall_timeout_seconds\n(longer while REAPER holds a scratch file), or \"timeout\" after\ntimeout_seconds in total.\nRegions are reported by the number REAPER shows on them and their name,\nas in get_project_info and list_markers.",
     "input_schema": {
       "properties": {
         "dry_run": {
@@ -1065,7 +2334,7 @@
     }
   },
   "render_stems": {
-    "description": "Render each track as a separate stem file by soloing each track individually.\ntrack_indices: list of track indices, or null to render all tracks.\nFiles are named after the track names in the output directory. Existing\nfiles are only replaced with overwrite=true.",
+    "description": "Render each track as a separate stem file by soloing each track individually.\ntrack_indices: list of track indices, or null to render all tracks.\nFiles are named after the track names in the output directory. Existing\nfiles are only replaced with overwrite=true. Refused while REAPER plays or records.",
     "input_schema": {
       "properties": {
         "bit_depth": {
@@ -1116,7 +2385,7 @@
     }
   },
   "render_time_selection": {
-    "description": "Render a specific time range of the project to a file. An existing file\nis only replaced with overwrite=true.",
+    "description": "Render a specific time range of the project to a file. An existing file\nis only replaced with overwrite=true. Refused while REAPER plays or records.",
     "input_schema": {
       "properties": {
         "bit_depth": {
@@ -1163,6 +2432,27 @@
         "end"
       ],
       "title": "render_time_selectionArguments",
+      "type": "object"
+    }
+  },
+  "save_mix_snapshot": {
+    "description": "Save the mixer as it is now under a name (\"before EQ\", \"mix A\"): every\ntrack's and the master's volume, pan, mute, solo, and each FX's on/off\nstate and parameter values. Saved inside the project, so it is kept when\nthe project is saved. Recall it with recall_mix_snapshot, compare with\ncompare_mix_snapshots. A name already used is only replaced with\noverwrite=true. Not an undo step: saving changes nothing in the mix.",
+    "input_schema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "save_mix_snapshotArguments",
       "type": "object"
     }
   },
@@ -1257,6 +2547,67 @@
       "type": "object"
     }
   },
+  "set_active_take": {
+    "description": "Choose which take of an item plays (take_index, from list_takes); the\nother takes are kept. (On a REAPER 7 fixed-lane track, choose the playing\nlane in REAPER itself.)\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "take_index": {
+          "title": "Take Index",
+          "type": "integer"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item",
+        "take_index"
+      ],
+      "title": "set_active_takeArguments",
+      "type": "object"
+    }
+  },
+  "set_automation_mode": {
+    "description": "Set a track's automation mode: trim_read (default: automation plays, the fader\nadds on top) or read (automation plays and moves the fader). Use these to play\nback automation written with these tools.\ntouch, latch and write make the next playback record fader moves over the\nautomation (write overwrites all of it); only set them when the user asks for\nthat mode by name.",
+    "input_schema": {
+      "properties": {
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "mode"
+      ],
+      "title": "set_automation_modeArguments",
+      "type": "object"
+    }
+  },
   "set_cursor_position": {
     "description": "Move the edit cursor to a position in seconds.",
     "input_schema": {
@@ -1301,6 +2652,49 @@
         "value"
       ],
       "title": "set_fx_parameterArguments",
+      "type": "object"
+    }
+  },
+  "set_fx_parameter_by_name": {
+    "description": "Set an FX parameter by its name, with the value as the plugin displays it:\n\"-3 dB\", \"300 Hz\", \"1.5 kHz\", \"20 ms\", \"2 s\", \"4:1\", or a word such as \"On\".\nGive track_index for a track's FX, or master=true for the master track's FX\n(e.g. a limiter's ceiling). param_name: as get_fx_parameters lists it (case\ndoes not matter; part of the name works when only one parameter contains it).\nWrite thousands without a separator (\"1000 Hz\" or \"1 kHz\", not \"1.000 Hz\").\nA value past the parameter's range lands on its end; the result says what the\nplugin now displays and whether that is the value asked for.",
+    "input_schema": {
+      "properties": {
+        "fx_index": {
+          "title": "Fx Index",
+          "type": "integer"
+        },
+        "master": {
+          "default": false,
+          "title": "Master",
+          "type": "boolean"
+        },
+        "param_name": {
+          "title": "Param Name",
+          "type": "string"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "param_name",
+        "value",
+        "fx_index"
+      ],
+      "title": "set_fx_parameter_by_nameArguments",
       "type": "object"
     }
   },
@@ -1428,6 +2822,42 @@
       "type": "object"
     }
   },
+  "set_pan_over_range": {
+    "description": "Pan a track to pan (-1 full left, 0 center, +1 full right) from start to end\n(seconds), e.g. pan=-1 puts a guitar hard left in the solo. Any pan\nautomation inside the range is replaced; outside it is kept. ramp_seconds:\nhow long the move takes before start and back after end (default 0.05).\nCreates the pan envelope if needed (center elsewhere).",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "title": "End",
+          "type": "number"
+        },
+        "pan": {
+          "title": "Pan",
+          "type": "number"
+        },
+        "ramp_seconds": {
+          "default": 0.05,
+          "title": "Ramp Seconds",
+          "type": "number"
+        },
+        "start": {
+          "title": "Start",
+          "type": "number"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "start",
+        "end",
+        "pan"
+      ],
+      "title": "set_pan_over_rangeArguments",
+      "type": "object"
+    }
+  },
   "set_punch_mode": {
     "description": "How recording starts and stops in this project. REAPER saves the mode\nwith the project, so it stays set here (also after reopening it) until it is\nset back to normal; other projects keep their own, and new ones start normal.\nmode: \"normal\" (records from the moment you start until you stop) or\n\"time_selection\" (auto-punch: plays the whole time but only records inside the\ntime selection; set it first with set_time_selection).",
     "input_schema": {
@@ -1480,7 +2910,7 @@
     }
   },
   "set_send_volume": {
-    "description": "Set the volume of a send in dB.",
+    "description": "Legacy: prefer edit_send (also pan, mute and pre/post-fader).\nSet the volume of a send in dB.",
     "input_schema": {
       "properties": {
         "send_index": {
@@ -1730,8 +3160,87 @@
       "type": "object"
     }
   },
+  "set_volume_over_range": {
+    "description": "Raise or lower a track's volume between start and end (seconds) by change_db,\nrelative to the volume automation already there (a fade or ride inside the\nrange is kept, just shifted). ramp_seconds: how long the change takes to come\nin before start and to go away after end, so it does not click (default 0.05;\n0 means as fast as possible, 1 ms).\nCreates the volume envelope if the track has none (0 dB elsewhere).\nExample: change_db=-3 makes a loud chorus 3 dB quieter.\n(add_volume_automation instead adds one point at an absolute level.)",
+    "input_schema": {
+      "properties": {
+        "change_db": {
+          "title": "Change Db",
+          "type": "number"
+        },
+        "end": {
+          "title": "End",
+          "type": "number"
+        },
+        "ramp_seconds": {
+          "default": 0.05,
+          "title": "Ramp Seconds",
+          "type": "number"
+        },
+        "start": {
+          "title": "Start",
+          "type": "number"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "start",
+        "end",
+        "change_db"
+      ],
+      "title": "set_volume_over_rangeArguments",
+      "type": "object"
+    }
+  },
+  "split_item": {
+    "description": "Split an item at one or more times (project seconds, each inside the item\nand at least 1 ms from its edges; times closer than 1 ms count once).\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nReturns the pieces left to right with their GUIDs; the first keeps the\noriginal GUID, the others are new items.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "times": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Times",
+          "type": "array"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item",
+        "times"
+      ],
+      "title": "split_itemArguments",
+      "type": "object"
+    }
+  },
   "start_recording": {
-    "description": "Start recording, after checking it can work: not already recording, audio\nrunning, the project saved (so takes are stored next to it), and each track\nthat will record has an input and a record mode that records. Playback is\nstopped first, so the take starts at position.\ntrack_index: the track to record on (armed here); by default the tracks\nalready armed. disarm_others: disarm every other track, so nothing else is\nrecorded by accident. position: start from here (seconds) instead of the edit\ncursor. save_first: save a never-saved project instead of refusing.\nWarns about monitoring, auto-punch and repeat. Stop with stop_recording.",
+    "description": "Start recording, after checking it can work: not already recording, audio\nrunning, the project saved (so takes are stored next to it), and each track\nthat will record has an input and a record mode that records. Playback is\nstopped first, so the take starts at position.\ntrack_index: the track to record on (armed here); by default the tracks\nalready armed. disarm_others: disarm every other track, so nothing else is\nrecorded by accident. position: start from here (seconds) instead of the edit\ncursor. save_first: save a never-saved project instead of refusing.\nWarns about monitoring, auto-punch and repeat. Stop with stop_recording.\nCount-in (a bar of click before the take) cannot be switched from here: it is\nREAPER's own setting (set_metronome reports it and says where to change it).",
     "input_schema": {
       "properties": {
         "disarm_others": {
@@ -1786,6 +3295,126 @@
     "input_schema": {
       "properties": {},
       "title": "stop_transportArguments",
+      "type": "object"
+    }
+  },
+  "suggest_best_take": {
+    "description": "Check an item's takes (or, on a REAPER 7 fixed-lane track, its lanes) for\ntechnical problems: clipping, a very low level, and sound that stops early\nor starts late compared with the others. Suggests a take only when exactly\none has the fewest problems; otherwise lists the tied ones (\"tied\"). Louder\nis not better: it cannot judge the performance, so listen before choosing,\nthen use set_active_take. Nothing is changed.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "suggest_best_takeArguments",
+      "type": "object"
+    }
+  },
+  "trim_item_to_time_selection": {
+    "description": "Trim an item to the time selection: the parts before and after it are\nremoved and the audio that stays does not move in time.\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nSet the time selection first with set_time_selection.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "trim_item_to_time_selectionArguments",
+      "type": "object"
+    }
+  },
+  "trim_silence": {
+    "description": "Trim the silence at the start and end of an audio item (nothing in the\nmiddle is touched); the audio that stays does not move in time.\nthreshold_db: RMS dBFS of the recording below which it counts as silence.\npadding: seconds of quiet kept before the first and after the last sound.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "dry_run": {
+          "default": false,
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "padding": {
+          "default": 0.1,
+          "title": "Padding",
+          "type": "number"
+        },
+        "threshold_db": {
+          "default": -45.0,
+          "title": "Threshold Db",
+          "type": "number"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "trim_silenceArguments",
       "type": "object"
     }
   },

@@ -101,3 +101,18 @@ def test_remove_fx_and_send_take_a_guid(reaper, call):
     assert call("remove_fx", track_index=guid, fx_index=0)["track_index"] == 0
     assert call("remove_send", source_track_index=guid, send_index=0)["source_track_index"] == 0
     assert (vox.fxs, vox.sends) == ([], [])
+
+
+def test_a_dead_track_guid_is_refused_before_any_undo_step(reaper, call):
+    _tracks(reaper)
+    guid = call("list_tracks")["tracks"][1]["guid"]
+    call("delete_track", track_index=guid)
+    steps = list(reaper.undo_steps)
+    for tool, args in [("delete_track", {"track_index": guid}),
+                       ("remove_fx", {"track_index": guid, "fx_index": 0}),
+                       ("remove_send", {"source_track_index": guid, "send_index": 0}),
+                       ("delete_track", {"track_index": "Vox"})]:
+        result = call(tool, **args)
+        assert result["success"] is False and "nothing was changed" in result["error"], tool
+    assert reaper.undo_steps == steps
+    assert [t.name for t in reaper.tracks] == ["Vox"]

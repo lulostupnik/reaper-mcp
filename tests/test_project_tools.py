@@ -181,10 +181,20 @@ def test_get_project_info_markers_and_regions(reaper, call):
     reaper.regions = [(0.5, 4.0, "intro")]
     result = call("get_project_info")
     assert result["markers"] == [
-        {"index": 0, "name": "verse", "position": 1.0},
-        {"index": 1, "name": "", "position": 6.0},
+        {"number": 1, "name": "verse", "position": 1.0},
+        {"number": 2, "name": "", "position": 6.0},
     ]
-    assert result["regions"] == [{"index": 0, "name": "intro", "start": 0.5, "end": 4.0}]
+    assert result["regions"] == [
+        {"number": 1, "name": "intro", "start": 0.5, "end": 4.0}]
+
+
+def test_get_project_info_marker_numbers_are_not_list_positions(reaper, call):
+    reaper.markers = [(1.0, "verse"), (6.0, "chorus")]
+    reaper.DeleteProjectMarker(0, 1, False)
+    reaper.AddRegionOrMarker(0, False, 9.0, 9.0, "outro", -1, 0)
+    markers = call("get_project_info")["markers"]
+    assert [(m["number"], m["name"]) for m in markers] == [
+        (2, "chorus"), (1, "outro")]
 
 
 def test_set_tempo(reaper, call):

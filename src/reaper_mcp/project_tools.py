@@ -243,7 +243,8 @@ def load_project(*, project_path: str) -> dict:
 
 
 def markers_and_regions() -> tuple[list[dict], list[dict]]:
-    """Project markers and regions, each indexed in their own sequence."""
+    """Project markers and regions in timeline order; number is the one REAPER
+    shows (what the marker tools take)."""
     markers: list[dict] = []
     regions: list[dict] = []
     total = RPR.CountProjectMarkers(0, 0, 0)[0]
@@ -251,11 +252,12 @@ def markers_and_regions() -> tuple[list[dict], list[dict]]:
         handle = RPR.GetRegionOrMarker(0, i, "")
         name = RPR.GetSetRegionOrMarkerInfo_String(0, handle, "P_NAME", "", False)[4]
         start = RPR.GetRegionOrMarkerInfo_Value(0, handle, "D_STARTPOS")
+        number = int(RPR.GetRegionOrMarkerInfo_Value(0, handle, "I_NUMBER"))
         if RPR.GetRegionOrMarkerInfo_Value(0, handle, "B_ISREGION"):
             end = RPR.GetRegionOrMarkerInfo_Value(0, handle, "D_ENDPOS")
-            regions.append({"index": len(regions), "name": name, "start": start, "end": end})
+            regions.append({"number": number, "name": name, "start": start, "end": end})
         else:
-            markers.append({"index": len(markers), "name": name, "position": start})
+            markers.append({"number": number, "name": name, "position": start})
     return markers, regions
 
 

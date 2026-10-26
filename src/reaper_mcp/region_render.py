@@ -19,6 +19,7 @@ from reaper_mcp.render_tools import (
     restore_render_settings,
     save_render_settings,
     set_project_string,
+    transport_error,
 )
 from reaper_mcp.undo import no_undo
 
@@ -224,12 +225,14 @@ def render_regions(
         selected, REAPER renders all of them.
     dry_run: return the project's regions and the files REAPER would write,
         without rendering. It sets the render settings and restores them.
-    Fails without rendering if any output file already exists; never deletes files.
+    Fails without rendering if any output file already exists, or while REAPER
+    plays or records; never deletes files.
     Blocks until every file is written; status is then "complete". Gives up
     with "stalled" once the files stop growing for stall_timeout_seconds
     (longer while REAPER holds a scratch file), or "timeout" after
     timeout_seconds in total.
-    Region "index" is the position among regions, as in get_project_info.
+    Regions are reported by the number REAPER shows on them and their name,
+    as in get_project_info and list_markers.
     """
     # The render settings must stay in place until REAPER is done with them,
     # which is why the call blocks: an async mode would need a job API.
@@ -239,6 +242,8 @@ def render_regions(
     regions = markers_and_regions()[1]
     if not regions:
         return {"success": False, "error": "no regions are defined in the current project"}
+    if not dry_run and (error := transport_error()) is not None:
+        return {"success": False, "error": error}
 
     strings, numbers = _save_render_settings()
     try:

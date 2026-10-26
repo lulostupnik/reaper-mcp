@@ -159,9 +159,11 @@ def test_list_sends_reports_each_send(reaper, call):
     assert (result["track_index"], result["guid"]) == (0, src.guid)
     first, second = result["sends"]
     assert first == {"send_index": 0, "dest_track_index": 1, "dest_track_guid": a.guid,
-                     "dest_track_name": "A", "volume_db": -6.0, "pan": 0.0, "muted": False}
+                     "dest_track_name": "A", "volume_db": -6.0, "pan": 0.0, "muted": False,
+                     "mode": "post_fader"}
     assert second == {"send_index": 1, "dest_track_index": 2, "dest_track_guid": b.guid,
-                      "dest_track_name": "B", "volume_db": 0.0, "pan": 0.25, "muted": True}
+                      "dest_track_name": "B", "volume_db": 0.0, "pan": 0.25, "muted": True,
+                      "mode": "post_fader"}
 
 
 def test_list_sends_silent_send_reads_as_the_floor(reaper, call):

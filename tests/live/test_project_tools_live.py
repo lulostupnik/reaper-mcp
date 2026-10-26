@@ -47,9 +47,9 @@ def test_project_info_reports_signature_markers_and_regions(live_project, call):
     info = call("get_project_info")
     assert info["success"] is True, info
     assert info["time_signature"] == "7/8"
-    assert info["markers"] == [{"index": 0, "name": "verse", "position": pytest.approx(1.0)}]
+    assert info["markers"] == [{"number": 1, "name": "verse", "position": pytest.approx(1.0)}]
     assert info["regions"] == [
-        {"index": 0, "name": "chorus", "start": pytest.approx(2.0), "end": pytest.approx(4.0)}
+        {"number": 1, "name": "chorus", "start": pytest.approx(2.0), "end": pytest.approx(4.0)}
     ]
 
 

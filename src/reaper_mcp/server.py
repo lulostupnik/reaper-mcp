@@ -11,18 +11,30 @@ from mcp.server import MCPServer
 from reaper_mcp import (
     analysis_tools,
     audio_tools,
+    automation_tools,
     context_tools,
+    fx_browser_tools,
+    fx_chain_tools,
     fx_tools,
+    item_edit_tools,
+    item_tools,
+    marker_tools,
     mastering_tools,
+    measure_tools,
     midi_tools,
     mixing_tools,
     project_template_tools,
     project_tools,
+    prompts,
     reaper,
     record_setup_tools,
     recording_tools,
     region_render,
     render_tools,
+    routing_tools,
+    silence_tools,
+    snapshot_tools,
+    take_tools,
     template_tools,
     track_tools,
     transport_tools,
@@ -102,14 +114,25 @@ for _module in (
     record_setup_tools,
     recording_tools,
     transport_tools,
+    marker_tools,
     midi_tools,
+    fx_browser_tools,
     fx_tools,
+    fx_chain_tools,
     audio_tools,
+    item_tools,
+    item_edit_tools,
+    silence_tools,
+    take_tools,
     mixing_tools,
+    automation_tools,
+    routing_tools,
     render_tools,
     region_render,
     mastering_tools,
     analysis_tools,
+    measure_tools,
+    snapshot_tools,
     template_tools,
     project_template_tools,
 ):
@@ -120,6 +143,10 @@ for _module in (
             description=inspect.cleandoc(_tool.__doc__ or ""),
             annotations=kind_of(_tool).annotations,
         )(_serialized(as_undo_step(_tool)))
+
+
+for _prompt in prompts.PROMPTS:
+    _server.prompt(description=inspect.cleandoc(_prompt.__doc__ or ""))(_prompt)
 
 
 @_server.resource(

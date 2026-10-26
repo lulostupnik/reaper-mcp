@@ -30,7 +30,8 @@ def test_add_fx(reaper, call):
 def test_add_fx_missing_plugin(reaper, call):
     track = reaper.add_track("Bus")
     result = call("add_fx", track_index=0, fx_name="NoSuchVerb")
-    assert result == {"success": False, "error": "Plugin not found: 'NoSuchVerb'"}
+    assert result == {"success": False, "error": "Plugin not found: 'NoSuchVerb'. "
+                                                 "list_installed_fx finds installed plugins by name"}
     assert track.fxs == []
 
 
@@ -52,7 +53,7 @@ def test_remove_fx(reaper, call):
 def test_remove_fx_bad_index(reaper, call):
     track = _fx_track(reaper)
     result = call("remove_fx", track_index=0, fx_index=2)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert result == {"success": False, "error": "There is no FX 2 on that track: it has 2 (numbered from 0; list_track_fx lists them)"}
     assert len(track.fxs) == 2
 
 
@@ -74,6 +75,7 @@ def test_set_fx_parameter(reaper, call):
         "param_index": 1,
         "param_name": "Ratio",
         "value": 0.9,
+        "formatted_value": "0.90",
     }
     assert track.fxs[1].values == [0.4, 0.9, 0.6, 0.7]
 
@@ -87,7 +89,7 @@ def test_set_fx_parameter_bad_param(reaper, call):
 def test_set_fx_parameter_bad_fx(reaper, call):
     _fx_track(reaper)
     result = call("set_fx_parameter", track_index=0, fx_index=5, param_index=0, value=0.9)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert result == {"success": False, "error": "There is no FX 5 on that track: it has 2 (numbered from 0; list_track_fx lists them)"}
 
 
 # get_fx_parameters
@@ -119,7 +121,7 @@ def test_get_fx_parameters_no_params(reaper, call):
 def test_get_fx_parameters_bad_fx(reaper, call):
     reaper.add_track("Bus")
     result = call("get_fx_parameters", track_index=0, fx_index=0)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert result == {"success": False, "error": "There is no FX 0 on that track: it has 0 (numbered from 0; list_track_fx lists them)"}
 
 
 # list_track_fx
@@ -169,7 +171,7 @@ def test_bypass_fx(reaper, call):
 def test_bypass_fx_bad_fx(reaper, call):
     reaper.add_track("Bus")
     result = call("bypass_fx", track_index=0, fx_index=0, bypassed=True)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert result == {"success": False, "error": "There is no FX 0 on that track: it has 0 (numbered from 0; list_track_fx lists them)"}
 
 
 # load_fx_preset
@@ -191,11 +193,39 @@ def test_load_fx_preset(reaper, call):
 def test_load_fx_preset_missing(reaper, call):
     track = _fx_track(reaper)
     result = call("load_fx_preset", track_index=0, fx_index=0, preset_name="Vocal Air")
-    assert result == {"success": False, "error": "VST: ReaEQ (Cockos) has no preset named 'Vocal Air'"}
+    assert result == {"success": False, "error": "VST: ReaEQ (Cockos) has no preset named "
+                                                 "'Vocal Air' (names must match exactly); "
+                                                 "list_fx_presets lists them with their "
+                                                 "preset_index"}
+    # No preset was loaded to look for it.
+    assert track.fxs[0].values == [0.1, 0.2, 0.3]
     assert [f.preset for f in track.fxs] == ["", ""]
 
 
 def test_load_fx_preset_bad_fx(reaper, call):
     reaper.add_track("Bus")
     result = call("load_fx_preset", track_index=0, fx_index=0, preset_name="Vocal Air")
-    assert result == {"success": False, "error": "list index out of range"}
+    assert result == {"success": False, "error": "There is no FX 0 on that track: it has 0 "
+                                                 "(numbered from 0; list_track_fx lists them)"}
+
+
+# fx_index -1: REAPER has no FX -1, and reapy would wrap it to the last FX.
+
+
+def test_fx_tools_refuse_fx_index_minus_one(reaper, call):
+    track = _fx_track(reaper)
+    for tool, args in [("remove_fx", {}), ("bypass_fx", {"bypassed": True}),
+                       ("set_fx_parameter", {"param_index": 0, "value": 0.9}),
+                       ("get_fx_parameters", {})]:
+        result = call(tool, track_index=0, fx_index=-1, **args)
+        assert result["success"] is False and "There is no FX -1" in result["error"], tool
+    assert [f.plugin for f in track.fxs] == ["ReaEQ", "ReaComp"]
+    assert [f.enabled for f in track.fxs] == [True, True]
+    assert track.fxs[1].values == [0.4, 0.5, 0.6, 0.7]
+
+
+def test_set_master_fx_parameter_refuses_fx_index_minus_one(reaper, call):
+    reaper.master.fxs.append(FXState("ReaLimit", [0.1, 0.2, 0.3]))
+    result = call("set_master_fx_parameter", fx_index=-1, param_index=0, value=0.9)
+    assert result["success"] is False and "There is no FX -1" in result["error"]
+    assert reaper.master.fxs[0].values == [0.1, 0.2, 0.3]

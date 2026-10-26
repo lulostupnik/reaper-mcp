@@ -12,15 +12,23 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from tests.fake_reaper.item_state import NULL_TAKE, ItemState, Note, TakeState
+
 if TYPE_CHECKING:
     from tests.fake_reaper.api import FakeReaper
 
 # Presets each fake plugin ships with.
-PRESETS = {"ReaEQ": ["Bright", "Warm"], "ReaComp": ["Gentle"], "ReaLimit": [], "ReaSynth": []}
+PRESETS = {"ReaEQ": ["Bright", "Warm"], "ReaComp": ["Gentle"], "ReaLimit": [], "ReaSynth": [],
+           "ReaGate": [], "ReaDelay": []}
+
+# REAPER (6.37+) adds these three parameters at the end of every FX. The fake's
+# plugins leave them out to keep their lists short, except ReaDelay.
+REAPER_PARAMS = ("Bypass", "Wet", "Delta")
 
 # REAPER's values for track settings a new track's info dict leaves out.
 TRACK_DEFAULTS = {"I_RECARM": 0.0, "I_RECINPUT": 0.0, "I_RECMON": 0.0, "I_RECMODE": 0.0,
-                  "B_MAINSEND": 1.0, "I_FOLDERDEPTH": 0.0}
+                  "B_MAINSEND": 1.0, "I_FOLDERDEPTH": 0.0, "I_FREEMODE": 0.0,
+                  "I_NUMFIXEDLANES": 0.0, "I_AUTOMODE": 0.0}
 
 # The plugins the fake REAPER has installed; anything else is "not found".
 INSTALLED_FX = {
@@ -28,7 +36,30 @@ INSTALLED_FX = {
     "ReaComp": ["Thresh", "Ratio", "Attack", "Release"],
     "ReaLimit": ["Threshold", "Ceiling", "Release"],
     "ReaSynth": ["Volume", "Tuning"],
+    "ReaGate": ["Gain", "Bypass"],
+    "ReaDelay": ["Wet", "Dry", "Length", *REAPER_PARAMS],
 }
+
+
+def display(plugin: str, param: int, value: float) -> str:
+    """What a fake plugin displays for a normalized value. Stand-in curves,
+    in the units REAPER's own plugins show; tests/live exercises the real ones."""
+    name = INSTALLED_FX[plugin][param]
+    if plugin == "ReaLimit" and name == "Threshold":
+        return f"{value * 72 - 60:+.2f} dB"  # ReaLimit's threshold: -60..+12 dB
+    if plugin == "ReaLimit" and name == "Release":
+        # ReaLimit's release falls from "inf" as the control rises.
+        return "inf" if value <= 0 else f"{6 / value**0.5:.1f} dB/sec"
+    if name.startswith("Gain"):
+        return "-inf" if value <= 0 else f"{value * 48 - 24:+.1f} dB"
+    if name.startswith("Freq"):
+        hertz = 20 * 1000**value
+        return f"{hertz / 1000:.2f} kHz" if hertz >= 1000 else f"{hertz:.1f} Hz"
+    if name in ("Attack", "Release"):
+        return f"{value * 500:.1f} ms"
+    if name == "Bypass":
+        return "On" if value >= 0.5 else "Off"
+    return f"{value:.2f}"
 
 
 @dataclass
@@ -40,43 +71,12 @@ class FXState:
 
 
 @dataclass
-class Note:
-    start: float
-    end: float
-    pitch: int
-    velocity: int
-    channel: int
-
-
-@dataclass
-class ItemState:
-    pointer: str
-    position: float
-    length: float
-    midi: bool
-    notes: list[Note] = field(default_factory=list)
-    has_take: bool = True  # REAPER items can hold no take at all
-    extra_takes: int = 0  # takes besides the active one (recorded into an existing item)
-    info: dict[str, float] = field(
-        default_factory=lambda: {"D_FADEINLEN": 0.0, "D_FADEOUTLEN": 0.0}
-    )
-    take_info: dict[str, float] = field(
-        default_factory=lambda: {"D_STARTOFFS": 0.0, "D_PITCH": 0.0, "D_PLAYRATE": 1.0}
-    )
-    selected: bool = False
-    source_file: str = ""  # the take's audio file; "" for MIDI and imported stand-ins
-
-    @property
-    def guid(self) -> str:
-        return "{" + self.pointer[-8:] + "-1111-1111-1111-111111111111}"
-
-
-@dataclass
 class Send:
     dest: str
     volume: float = 1.0
     pan: float = 0.0
     muted: bool = False
+    mode: int = 0  # I_SENDMODE: post-fader
 
 
 @dataclass
@@ -92,6 +92,11 @@ class TrackState:
     )
     selected: bool = False
     input_level: float = 0.0  # linear peak of what the track's input receives
+    # Successive meter readings (linear) instead of a steady input_level; the
+    # last one repeats. Each Track_GetPeakInfo of channel 1 moves to the next.
+    input_levels: list[float] = field(default_factory=list)
+    meter_reads: int = 0
+    hold_from: int = 0  # the first reading the peak hold covers (reset by clearing it)
 
     @property
     def guid(self) -> str:
@@ -129,7 +134,8 @@ class FakeFXParam(float):
 
     @property
     def formatted(self) -> str:
-        return f"{self.normalized:.2f}"
+        """reapy reads it with TrackFX_GetFormattedParamValue."""
+        return display(self._state.plugin, self._index, self.normalized)
 
 
 class FakeFX:
@@ -167,32 +173,33 @@ class FakeFX:
 
 
 class FakeTake:
-    def __init__(self, state: ItemState) -> None:
+    def __init__(self, state: TakeState, item: ItemState) -> None:
         self._state = state
+        self._item = item
 
     @property
     def is_midi(self) -> bool:
-        return self._state.midi
+        return self._item.midi
 
     @property
     def name(self) -> str:
-        return "take"
+        return self._state.name
 
     @property
     def start_offset(self) -> float:
-        return self._state.take_info["D_STARTOFFS"]
+        return self._state.info["D_STARTOFFS"]
 
     def get_info_value(self, param: str) -> float:
-        return self._state.take_info[param]
+        return self._state.value(param)
 
     def set_info_value(self, param: str, value: float) -> None:
-        self._state.take_info[param] = value
+        self._state.info[param] = value
 
     def add_note(
         self, start, end, pitch, velocity=100, channel=0, selected=False,
         muted=False, unit="seconds", sort=True,
     ) -> None:
-        self._state.notes.append(Note(start, end, pitch, velocity, channel))
+        self._item.notes.append(Note(start, end, pitch, velocity, channel))
 
 
 class FakeItem:
@@ -218,14 +225,17 @@ class FakeItem:
 
     @property
     def active_take(self) -> FakeTake:
-        return FakeTake(self._state)
+        """reapy returns a Take even for an item without one (a null take)."""
+        if not self._state.takes:
+            return FakeTake(TakeState(pointer=NULL_TAKE), self._state)
+        return FakeTake(self._state.take, self._state)
 
     @property
     def n_takes(self) -> int:
-        return 1 + self._state.extra_takes if self._state.has_take else 0
+        return len(self._state.takes)
 
     def get_info_value(self, param: str) -> float:
-        return self._state.info[param]
+        return self._state.value(param)
 
     def set_info_value(self, param: str, value: float) -> None:
         self._state.info[param] = value

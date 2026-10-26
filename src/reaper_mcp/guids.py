@@ -6,6 +6,8 @@ through resolve_track. A GUID that matches nothing is an error, never a
 fallback to some other track.
 """
 
+from collections.abc import Sequence
+
 from reaper_mcp.reaper import RPR, Pointer
 
 
@@ -29,11 +31,14 @@ def item_guid(item) -> str:
     return RPR.GetSetMediaItemInfo_String(item.id, "GUID", "", False)[3]
 
 
+TRACK_HINT = "Call list_tracks for the current tracks and their GUIDs."
+
+
 def _is_guid(text: str) -> bool:
     return text.startswith("{") and text.endswith("}") and len(text) == 38
 
 
-def _resolve_indexed(objects: list, ref: int | str, guid_of, *, noun: str, hint: str):
+def resolve_indexed(objects: Sequence, ref: int | str, guid_of, *, noun: str, hint: str):
     """(index, object) for an index (an int or a string of digits), or for the
     object whose GUID is ref; LookupError otherwise."""
     if isinstance(ref, str) and ref.strip().isdigit():
@@ -55,8 +60,8 @@ def _resolve_indexed(objects: list, ref: int | str, guid_of, *, noun: str, hint:
 def resolve_track_index(project, track: int | str) -> tuple[int, object]:
     """(index, track) for the track named by a 0-based index or a GUID such as
     "{0A1B...}"."""
-    return _resolve_indexed(list(project.tracks), track, track_guid, noun="track",
-                            hint="Call list_tracks for the current tracks and their GUIDs.")
+    return resolve_indexed(list(project.tracks), track, track_guid, noun="track",
+                            hint=TRACK_HINT)
 
 
 def resolve_track(project, track: int | str):
@@ -66,5 +71,5 @@ def resolve_track(project, track: int | str):
 
 def resolve_item(track, item: int | str):
     """The item on track named by a 0-based index or an item GUID."""
-    return _resolve_indexed(list(track.items), item, item_guid, noun="item",
+    return resolve_indexed(list(track.items), item, item_guid, noun="item",
                             hint="Call get_track_info for the current items and their GUIDs.")[1]

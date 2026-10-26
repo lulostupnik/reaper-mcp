@@ -291,9 +291,11 @@ def _level_track(tracks, track_index: int | None) -> int:
     return track_index
 
 
-def _sample(pointer: str, seconds: float) -> tuple[float, float]:
-    """(peak dBFS, seconds actually listened) of the track's meter. The time,
-    not the number of readings, is limited: each reading is a round trip to REAPER."""
+def _sample(pointer: str, seconds: float) -> tuple[float, float, float]:
+    """(peak dBFS, average dBFS, seconds actually listened) of the track's meter.
+    The average is the mean of the meter's (linear) readings, so one loud spike
+    raises the peak but barely the average. The time, not the number of readings, is
+    limited: each reading is a round trip to REAPER."""
     for channel in (0, 1):
         RPR.Track_GetPeakHoldDB(pointer, channel, True)  # clear the hold
     start = _clock()
@@ -305,7 +307,8 @@ def _sample(pointer: str, seconds: float) -> tuple[float, float]:
     # Peak hold is in hundredths of a dB: 0.02 = +2 dB. It catches peaks between readings.
     hold_db = max(RPR.Track_GetPeakHoldDB(pointer, channel, False) for channel in (0, 1)) * 100
     peak_db = max(linear_to_db(max(readings)), hold_db)
-    return round(peak_db, 1), round(_clock() - start, 1)
+    average_db = linear_to_db(sum(readings) / len(readings))
+    return round(peak_db, 1), round(average_db, 1), round(_clock() - start, 1)
 
 
 def _meter_warnings(track) -> list[str]:
@@ -326,7 +329,9 @@ def check_input_level(*, track_index: int | None = None, seconds: float = 3.0) -
     """Listen to an armed track's input for a few seconds (0.5 to 10) and say whether
     the level is right to record: "no signal" (with things to check), "too quiet",
     "good" or "clipping". Play or sing as loud as you will in the take while it
-    listens. Reports the peak level in dBFS (aim for about -12). Never starts recording.
+    listens. Reports the peak level in dBFS (aim for about -12) and the average
+    level: an average far below the peak means the peak was a short loud moment,
+    such as one bump or plosive, and the rest was quieter. Never starts recording.
     track_index: the track to check; by default the only armed track."""
     if not MIN_CHECK_SECONDS <= seconds <= MAX_CHECK_SECONDS:
         return {"success": False, "error": f"seconds must be {MIN_CHECK_SECONDS} to "
@@ -345,7 +350,7 @@ def check_input_level(*, track_index: int | None = None, seconds: float = 3.0) -
         return {"success": False, "error": f"track {index} records "
                 f"{'nothing' if value < 0 else 'MIDI'}, which has no audio level: "
                 "set an audio input with set_track_input"}
-    peak_db, listened = _sample(track.id, seconds)
+    peak_db, average_db, listened = _sample(track.id, seconds)
     verdict, advice = _verdict(peak_db)
     return {
         "success": True,
@@ -354,6 +359,7 @@ def check_input_level(*, track_index: int | None = None, seconds: float = 3.0) -
         "record_input": record_state(track)["record_input"],
         "seconds": listened,
         "peak_dbfs": peak_db,
+        "average_dbfs": average_db,
         "verdict": verdict,
         "advice": advice,
         "warnings": _meter_warnings(track),

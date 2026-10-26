@@ -11,7 +11,8 @@ WAV_24 = base64.b64encode(b"evaw\x18\x00\x01").decode()
 UNSET_RENDER_SETTINGS = {
     "RENDER_FILE": "", "RENDER_PATTERN": "", "RENDER_FORMAT": "",
     "RENDER_SRATE": 0.0, "RENDER_CHANNELS": 0.0, "RENDER_BOUNDSFLAG": 0.0,
-    "RENDER_ADDTOPROJ": 0.0,
+    "RENDER_ADDTOPROJ": 0.0, "RENDER_SETTINGS": 0.0, "RENDER_NORMALIZE": 0.0,
+    "RENDER_TAILFLAG": 0.0,
 }
 
 
@@ -32,6 +33,9 @@ def assert_rendered_and_deleted(reaper, rate=48000):
         "RENDER_CHANNELS": 2.0,
         "RENDER_BOUNDSFLAG": 1.0,
         "RENDER_ADDTOPROJ": 0.0,
+        "RENDER_SETTINGS": 0.0,
+        "RENDER_NORMALIZE": 0.0,
+        "RENDER_TAILFLAG": 0.0,
     }
 
 
@@ -41,3 +45,20 @@ def assert_no_track(result: dict) -> None:
     assert result["success"] is False, result
     assert re.fullmatch(r"No track -?\d+: there are \d+ \(indices start at 0\); nothing was changed",
                         result["error"]), result
+
+
+def write_wav(path, segments, rate=48000, channels=1):
+    """A wav of consecutive (seconds, amplitude) parts: a 220 Hz tone at that
+    peak amplitude, or silence for 0. Returns str(path)."""
+    import numpy as np
+    import soundfile as sf
+
+    parts = []
+    for seconds, amplitude in segments:
+        t = np.arange(round(seconds * rate)) / rate
+        parts.append(amplitude * np.sin(2 * np.pi * 220 * t))
+    data = np.concatenate(parts) if parts else np.zeros(0)
+    if channels > 1:
+        data = np.stack([data] * channels, axis=1)
+    sf.write(path, data, rate, subtype="FLOAT")
+    return str(path)

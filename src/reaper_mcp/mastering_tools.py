@@ -1,7 +1,8 @@
 import os
 
-from reaper_mcp.fx_tools import add_plugin, set_param_normalized
-from reaper_mcp.reaper import RPR, get_project
+from reaper_mcp.fx_tools import add_plugin, fx_index_error, set_param_normalized
+from reaper_mcp.fx_values import set_to_display
+from reaper_mcp.reaper import get_project
 from reaper_mcp.undo import edits, read_only
 from reaper_mcp.units import db_to_linear, linear_to_db
 
@@ -45,7 +46,11 @@ def list_master_fx() -> dict:
 @edits(idempotent=True)
 def set_master_fx_parameter(*, fx_index: int, param_index: int, value: float) -> dict:
     """Set a normalized parameter (0.0–1.0) on a master track FX plugin."""
-    param = set_param_normalized(get_project().master_track, fx_index, param_index, value=value)
+    master = get_project().master_track
+    error = fx_index_error(master, fx_index, lister="list_master_fx")
+    if error:
+        return error
+    param = set_param_normalized(master, fx_index, param_index, value=value)
     return {
         "success": True,
         "fx_index": fx_index,
@@ -92,30 +97,11 @@ def apply_mastering_chain(*, preset: str = "default") -> dict:
     return {"success": True, "preset": preset, "fx_chain": added, "missing": missing}
 
 
-def _shown(track, fx_index: int, param_index: int, *, value: float) -> float:
-    """The number REAPER would display for value, without setting it."""
-    text = RPR.TrackFX_FormatParamValueNormalized(track.id, fx_index, param_index, value, "", 64)[5]
-    return float(text.split()[0])  # "-3.00 dB", "12.0 dB/sec", "inf"
-
-
 def _set_to_display(track, fx, param_name: str, *, target: float) -> str:
-    """Set fx's parameter so REAPER displays target, by bisection over REAPER's
-    own formatter, rising or falling; returns what REAPER then displays.
-
-    The result is the first value that reaches target, so it is exact to the
-    display's precision; a target past the range lands on its end.
-    """
+    """Set fx's parameter so REAPER displays target (see fx_values.set_to_display);
+    returns what REAPER then displays. A target past the range lands on its end."""
     param_index = next(i for i in range(fx.n_params) if fx.params[i].name == param_name)
-    rising = (_shown(track, fx.index, param_index, value=0.25)
-              < _shown(track, fx.index, param_index, value=0.75))
-    low, high = 0.0, 1.0
-    for _ in range(40):
-        middle = (low + high) / 2
-        shown = _shown(track, fx.index, param_index, value=middle)
-        short = shown < target if rising else shown > target
-        low, high = (middle, high) if short else (low, middle)
-    RPR.TrackFX_SetParamNormalized(track.id, fx.index, param_index, high)
-    return RPR.TrackFX_GetFormattedParamValue(track.id, fx.index, param_index, "", 64)[4]
+    return set_to_display(track.id, fx.index, param_index, target=target)
 
 
 @edits()
