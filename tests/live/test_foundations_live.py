@@ -242,6 +242,29 @@ ALL_EDITS = {
     "set_track_mute": {"track_index": 0, "muted": True},
     "set_track_solo": {"track_index": 0, "soloed": True},
     "set_track_color": {"track_index": 0, "r": 200, "g": 10, "b": 10},
+    # Items, takes, silence
+    "edit_item": {"item": 0, "track_index": 0, "volume_db": -6.0, "fade_in": 0.2},
+    "split_item": {"item": 0, "track_index": 0, "times": [1.0]},
+    "move_item": {"item": 0, "track_index": 0, "position": 5.0},
+    "delete_item": {"item": 0, "track_index": 0},
+    "duplicate_item": {"item": 0, "track_index": 0},
+    "trim_item_to_time_selection": {"item": 0, "track_index": 0},
+    "glue_items": {"items_to_glue": [0], "track_index": 0},
+    "normalize_item": {"item": 0, "track_index": 0},
+    # FX, automation, markers, routing
+    "move_fx": {"track_index": 0, "fx_index": 0, "to_track_index": 1},
+    "copy_fx": {"track_index": 0, "fx_index": 0, "to_track_index": 1},
+    "set_fx_parameter_by_name": {"track_index": 0, "fx_index": 0,
+                                 "param_name": "Gain-Low Shelf", "value": "-3 dB"},
+    "load_fx_preset": {"track_index": 0, "fx_index": 0, "preset_index": 1},
+    "set_volume_over_range": {"track_index": 0, "start": 0.5, "end": 1.5, "change_db": -6.0},
+    "set_pan_over_range": {"track_index": 0, "start": 0.5, "end": 1.5, "pan": -0.5},
+    "set_automation_mode": {"track_index": 0, "mode": "touch"},
+    "add_marker": {"position": 1.0, "name": "m"},
+    "add_region": {"start": 1.0, "end": 2.0, "name": "r"},
+    "edit_send": {"source_track_index": 0, "send_index": 0, "volume_db": -10.0, "pan": 0.3},
+    "move_track_into_folder": {"track_index": 1, "folder_track_index": 0,
+                               "allow_new_folder": True},
 }
 
 
@@ -259,6 +282,7 @@ def test_every_edit_is_one_step_that_undo_takes_back_whole(
         RPR.GetSetProjectInfo_String(0, key, value, True)
     template = tmp_path / "t.RTrackTemplate"
     template.write_text(TRACK_TEMPLATE)
+    live_project.time_selection = (0.5, 1.5)
     checkpoint()
     before = project_text(tmp_path)
     arguments = {key: str(value).format(wav=tmp_path / "a.wav", template=template)
