@@ -30,7 +30,8 @@ def test_add_fx(reaper, call):
 def test_add_fx_missing_plugin(reaper, call):
     track = reaper.add_track("Bus")
     result = call("add_fx", track_index=0, fx_name="NoSuchVerb")
-    assert result == {"success": False, "error": "Plugin not found: 'NoSuchVerb'"}
+    assert result == {"success": False, "error": "Plugin not found: 'NoSuchVerb'. "
+                                                 "list_installed_fx finds installed plugins by name"}
     assert track.fxs == []
 
 
@@ -74,6 +75,7 @@ def test_set_fx_parameter(reaper, call):
         "param_index": 1,
         "param_name": "Ratio",
         "value": 0.9,
+        "formatted_value": "0.90",
     }
     assert track.fxs[1].values == [0.4, 0.9, 0.6, 0.7]
 
@@ -191,11 +193,17 @@ def test_load_fx_preset(reaper, call):
 def test_load_fx_preset_missing(reaper, call):
     track = _fx_track(reaper)
     result = call("load_fx_preset", track_index=0, fx_index=0, preset_name="Vocal Air")
-    assert result == {"success": False, "error": "VST: ReaEQ (Cockos) has no preset named 'Vocal Air'"}
+    assert result == {"success": False, "error": "VST: ReaEQ (Cockos) has no preset named "
+                                                 "'Vocal Air' (names must match exactly); "
+                                                 "list_fx_presets lists them with their "
+                                                 "preset_index"}
+    # No preset was loaded to look for it.
+    assert track.fxs[0].values == [0.1, 0.2, 0.3]
     assert [f.preset for f in track.fxs] == ["", ""]
 
 
 def test_load_fx_preset_bad_fx(reaper, call):
     reaper.add_track("Bus")
     result = call("load_fx_preset", track_index=0, fx_index=0, preset_name="Vocal Air")
-    assert result == {"success": False, "error": "list index out of range"}
+    assert result == {"success": False, "error": "There is no FX 0 on that track: it has 0 "
+                                                 "(numbered from 0; list_track_fx lists them)"}

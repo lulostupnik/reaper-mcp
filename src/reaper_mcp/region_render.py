@@ -229,7 +229,8 @@ def render_regions(
     with "stalled" once the files stop growing for stall_timeout_seconds
     (longer while REAPER holds a scratch file), or "timeout" after
     timeout_seconds in total.
-    Region "index" is the position among regions, as in get_project_info.
+    Regions are reported by the number REAPER shows on them and their name,
+    as in get_project_info and list_markers.
     """
     # The render settings must stay in place until REAPER is done with them,
     # which is why the call blocks: an async mode would need a job API.

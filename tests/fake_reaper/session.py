@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from tests.fake_reaper.api import FakeReaper
 
 # The project state an undo step restores.
-UNDO_STATE = ("tracks", "master", "markers", "regions", "tempo_markers", "bpm",
+UNDO_STATE = ("tracks", "master", "project_markers", "tempo_markers", "bpm",
               "time_signature", "envelopes", "project_info")
 PLAY_STATE = {"stopped": 0, "playing": 1, "paused": 2, "recording": 5}
 NULL_TRACK = "(MediaTrack*)0x0000000000000000"

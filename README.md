@@ -128,7 +128,9 @@ Every tool that changes the project is one named REAPER undo step ("MCP: Set tra
 `list_project_templates` `new_project_from_template` `save_project_template` `save_track_template`
 
 ### Tracks
-`create_track` `delete_track` `rename_track` `list_tracks` `get_track_info` `set_track_color` `create_bus` `create_send` `remove_send` `list_sends`
+`create_track` `delete_track` `rename_track` `list_tracks` `get_track_info` `set_track_color` `create_bus` `create_send` `remove_send` `list_sends` `edit_send` `get_folder_structure` `move_track_into_folder` `move_track_out_of_folder`
+
+`edit_send` sets a send's volume, pan, mute and mode (post-fader, pre-fader for a headphone mix, or pre-FX). `set_send_volume` is legacy. The folder tools move a track (with anything inside it) into a folder or one level out (turning a normal track into a folder needs `allow_new_folder=true`), and rewrite every track's folder depth so they always add up correctly.
 
 ### Track Templates
 `list_track_templates` `insert_track_template`
@@ -139,7 +141,9 @@ Inserts saved `.RTrackTemplate` files from REAPER's TrackTemplates folder (subfo
 `create_midi_item` `add_midi_note` `create_chord_progression` `create_drum_pattern`
 
 ### FX & Instruments
-`add_fx` `remove_fx` `bypass_fx` `list_track_fx` `get_fx_parameters` `set_fx_parameter` `load_fx_preset` `add_master_fx` `list_master_fx` `set_master_fx_parameter`
+`list_installed_fx` `add_fx` `remove_fx` `move_fx` `copy_fx` `bypass_fx` `list_track_fx` `get_fx_parameters` `set_fx_parameter` `set_fx_parameter_by_name` `list_fx_presets` `load_fx_preset` `add_master_fx` `list_master_fx` `set_master_fx_parameter`
+
+`list_installed_fx` finds installed plugins by name, tolerating typos (it reads REAPER's plugin caches). `add_fx` can insert at a chain position. `set_fx_parameter_by_name` takes the value as the plugin shows it ("-3 dB", "300 Hz", "20 ms", "On") and finds it through REAPER's own display, so it works for any plugin whose display is a number. It also works on the master track's FX (`master=true`); thousands must be written without a separator ("1000 Hz", not "1.000 Hz"). `list_fx_presets` has to load each preset to name it, then puts the plugin back as it was (and is one undo step), so it only runs when asked; `load_fx_preset` takes an exact name or the preset's place in that list and never scans on its own.
 
 ### Audio
 `import_audio_file` `edit_audio_item` `adjust_pitch` `adjust_playback_rate`
@@ -151,6 +155,16 @@ Items are named by GUID (from `list_items`), which survives splits and moves of 
 
 ### Mixing
 `set_track_volume` `set_track_pan` `set_track_mute` `set_track_solo` `set_send_volume` `set_master_volume` `add_volume_automation` `add_pan_automation`
+
+### Automation
+`get_envelope_points` `clear_automation` `set_volume_over_range` `set_pan_over_range` `set_automation_mode`
+
+`set_volume_over_range` raises or lowers a stretch (e.g. a chorus 3 dB down) relative to the automation already there, with short ramps so it does not click. `set_pan_over_range` pans a stretch to an absolute position (e.g. hard left in the solo). Both keep the curve's shape (square steps, curves) outside the range. `clear_automation` removes points in a range and keeps the curve outside it unchanged. `set_automation_mode` warns that touch, latch and write record over automation on the next playback. (`add_volume_automation` and `add_pan_automation` under Mixing add a single point at an absolute value.)
+
+### Markers and Regions
+`list_markers` `add_marker` `add_region` `rename_marker` `move_marker` `delete_marker` `go_to_marker`
+
+Markers and regions are named by the number REAPER shows on them (not their place in the list), by name (e.g. "Chorus"), or by GUID; markers and regions are searched together, and `kind="marker"` or `kind="region"` is only needed when both match (they are numbered separately). `list_markers` gives each region's start, end and length.
 
 ### Rendering
 `render_project` `render_stems` `render_time_selection` `render_regions`

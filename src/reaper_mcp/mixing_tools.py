@@ -7,7 +7,7 @@ from reaper_mcp.units import db_to_linear, linear_to_db
 SHOW_ENVELOPE = {"Volume": 40406, "Pan": 40407}
 
 
-def _envelope(project, track, name: str):
+def shown_envelope(project, track, name: str):
     """The track's envelope called name, shown first if the track has none yet.
 
     REAPER only creates a track envelope when it is shown, and the show action
@@ -36,7 +36,7 @@ def add_volume_automation(*, track_index: int, position: float, value_db: float)
     position: time in seconds. value_db: volume level in dB.
     """
     project = get_project()
-    envelope = _envelope(project, project.tracks[track_index], "Volume")
+    envelope = shown_envelope(project, project.tracks[track_index], "Volume")
     # Volume envelopes usually use fader scaling, where a raw linear 0.5 is near
     # silence; convert to the envelope's own scale.
     raw = RPR.ScaleToEnvelopeMode(RPR.GetEnvelopeScalingMode(envelope), db_to_linear(value_db))
@@ -52,7 +52,7 @@ def add_pan_automation(*, track_index: int, position: float, pan: float) -> dict
     pan: -1.0 (full left) to 1.0 (full right).
     """
     project = get_project()
-    envelope = _envelope(project, project.tracks[track_index], "Pan")
+    envelope = shown_envelope(project, project.tracks[track_index], "Pan")
     # REAPER's pan envelope runs opposite to track pan: +1 is full left there.
     RPR.InsertEnvelopePoint(envelope, position, -pan, 0, 0, False, True)
     RPR.Envelope_SortPoints(envelope)
@@ -87,6 +87,16 @@ def create_send(
         "volume_db": volume_db,
     }
 
+# I_SENDMODE values; 2 is a deprecated post-FX mode REAPER still reads as pre-fader.
+SEND_MODES = {"post_fader": 0, "pre_fx": 1, "pre_fader": 3}
+SEND_MODE_NAMES = {0: "post_fader", 1: "pre_fx", 2: "pre_fader", 3: "pre_fader"}
+
+
+def send_mode(track, send_index: int) -> str:
+    mode = int(RPR.GetTrackSendInfo_Value(track.id, 0, send_index, "I_SENDMODE"))
+    return SEND_MODE_NAMES.get(mode, str(mode))
+
+
 def _pointer_from_value(value: float) -> str:
     """A track pointer read through a *_Value getter, as reapy writes track ids:
     REAPER's Python binding hands pointers back as numbers there."""
@@ -100,7 +110,8 @@ def pointer_indices(tracks: list) -> dict[str, tuple[int, object]]:
 
 
 def track_sends(track, indices: dict[str, tuple[int, object]]) -> list[dict]:
-    """track's sends to other tracks: volume in dB, pan, mute and the destination.
+    """track's sends to other tracks: volume in dB, pan, mute, mode (post_fader,
+    pre_fader or pre_fx) and the destination.
     indices: pointer_indices of the project's tracks."""
     sends = []
     for i in range(RPR.GetTrackNumSends(track.id, 0)):
@@ -114,6 +125,7 @@ def track_sends(track, indices: dict[str, tuple[int, object]]) -> list[dict]:
             "volume_db": round(linear_to_db(RPR.GetTrackSendInfo_Value(track.id, 0, i, "D_VOL")), 2),
             "pan": RPR.GetTrackSendInfo_Value(track.id, 0, i, "D_PAN"),
             "muted": bool(RPR.GetTrackSendInfo_Value(track.id, 0, i, "B_MUTE")),
+            "mode": send_mode(track, i),
         })
     return sends
 
@@ -121,7 +133,7 @@ def track_sends(track, indices: dict[str, tuple[int, object]]) -> list[dict]:
 @read_only
 def list_sends(*, track_index: int) -> dict:
     """List all sends from a track: the destination track (index, GUID, name),
-    volume in dB, pan and mute."""
+    volume in dB, pan, mute and mode (post_fader, pre_fader or pre_fx)."""
     project = get_project()
     track = project.tracks[track_index]
     return {"success": True, "track_index": track_index, "guid": track_guid(track),
@@ -140,10 +152,11 @@ def remove_send(*, source_track_index: int | str, send_index: int) -> dict:
 
 @edits(idempotent=True)
 def set_send_volume(*, source_track_index: int, send_index: int, volume_db: float) -> dict:
-    """Set the volume of a send in dB."""
+    """Legacy: prefer edit_send (also pan, mute and pre/post-fader).
+    Set the volume of a send in dB."""
     project = get_project()
     track = project.tracks[source_track_index]
-    if not RPR.SetTrackSendInfo_Value(track.id, 0, send_index, "D_VOL", db_to_linear(volume_db)):
+    if not 0 <= send_index < RPR.GetTrackNumSends(track.id, 0) or not RPR.SetTrackSendInfo_Value(track.id, 0, send_index, "D_VOL", db_to_linear(volume_db)):
         return {"success": False, "error": f"track {source_track_index} has no send {send_index}"}
     return {
         "success": True,

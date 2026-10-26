@@ -153,8 +153,8 @@ def test_get_project_summary(reaper, call):
         "length": 4.0,
         "master": {"volume_db": 0.0, "pan": 0.0, "muted": False, "soloed": False,
                    "fx": ["VST: ReaLimit (Cockos)"]},
-        "markers": [{"index": 0, "name": "verse", "position": 2.0}],
-        "regions": [{"index": 0, "name": "take 1", "start": 0.0, "end": 8.0}],
+        "markers": [{"number": 1, "name": "verse", "position": 2.0}],
+        "regions": [{"number": 1, "name": "take 1", "start": 0.0, "end": 8.0}],
     }
     first, second, third = result["tracks"]
     assert first == {
@@ -162,7 +162,8 @@ def test_get_project_summary(reaper, call):
         "muted": False, "soloed": False, "armed": True, "record_input": "mono input 1",
         "monitoring": "on", "record_mode": "input", "fx": ["VST: ReaComp (Cockos)"],
         "sends": [{"send_index": 0, "dest_track_index": 2, "dest_track_guid": reverb.guid,
-                   "dest_track_name": "Reverb", "volume_db": 0.0, "pan": 0.0, "muted": False}],
+                   "dest_track_name": "Reverb", "volume_db": 0.0, "pan": 0.0, "muted": False,
+                   "mode": "post_fader"}],
         "item_count": 0,
     }
     assert (second["guid"], second["record_input"], second["soloed"]) == (

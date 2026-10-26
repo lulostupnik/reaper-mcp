@@ -7,8 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from reaper_mcp.reaper import ReaScriptAPI
+from tests.fake_reaper.envelopes import Envelopes
+from tests.fake_reaper.fx import FX
 from tests.fake_reaper.items import Items
-from tests.fake_reaper.objects import PRESETS, ItemState, Send, TrackState
+from tests.fake_reaper.markers import Markers
+from tests.fake_reaper.objects import ItemState, Send, TrackState
 from tests.fake_reaper.project import FakeProject
 from tests.fake_reaper.recording import Recording, template_track_names, track_template_text
 from tests.fake_reaper.render import render, render_targets
@@ -30,6 +33,8 @@ SAVE_TRACK_TEMPLATE, TEMPLATE_WITH_MEDIA = 1, 2
 TRANSPORT = {1007: "playing", 1016: "stopped"}
 # Track: Toggle track volume / pan envelope visible (on the selected tracks).
 SHOW_ENVELOPE = {40406: "Volume", 40407: "Pan"}
+# The send settings SetTrackSendInfo_Value changes, and the Send field each sets.
+SEND_FIELDS = {"D_VOL": "volume", "D_PAN": "pan", "B_MUTE": "muted", "I_SENDMODE": "mode"}
 
 
 # What REAPER fills a short sink config up with (its defaults; the exact bytes
@@ -52,7 +57,7 @@ def _sink_config(value: str) -> str:
 
 
 @dataclass
-class FakeReaper(Items, Session, Recording, Transport):
+class FakeReaper(Items, Session, Recording, Transport, Markers, Envelopes, FX):
     tmp: Path
     bpm: float = 120.0
     # bpm is in quarter notes, as REAPER displays it. The project-settings time
@@ -66,8 +71,6 @@ class FakeReaper(Items, Session, Recording, Transport):
     project_path: str = ""
     transport: str = "stopped"
     tracks: list[TrackState] = field(default_factory=list)
-    markers: list[tuple[float, str]] = field(default_factory=list)
-    regions: list[tuple[float, float, str]] = field(default_factory=list)
     project_info: dict[str, float | str] = field(default_factory=dict)
     envelopes: dict[tuple[str, str], list[tuple[float, float]]] = field(default_factory=dict)
     opened: list[str] = field(default_factory=list)
@@ -100,6 +103,7 @@ class FakeReaper(Items, Session, Recording, Transport):
         self.master = TrackState(self.new_pointer("MediaTrack"), "MASTER")
         self.project = FakeProject(self)
         self.start_session()
+        self.start_markers()
         self.start_recording_state()
         self.start_transport()
 
@@ -261,40 +265,6 @@ class FakeReaper(Items, Session, Recording, Transport):
         numerator, denominator = self.time_signature_at_start()
         return [project, time, numerator, denominator, self.bpm]
 
-    # Markers and regions, in position order as REAPER enumerates them
-
-    def _markers_and_regions(self) -> list[tuple[bool, float, float, str]]:
-        entries = [(False, p, 0.0, n) for p, n in self.markers]
-        entries += [(True, s, e, n) for s, e, n in self.regions]
-        return sorted(entries, key=lambda entry: entry[1])
-
-    def CountProjectMarkers(self, project: int, _markers: int, _regions: int) -> list:
-        return [len(self.markers) + len(self.regions), project, len(self.markers), len(self.regions)]
-
-    def GetRegionOrMarker(self, project: int, index: int, guid: str) -> str:
-        return f"(ProjectMarker*){index}"
-
-    def _marker(self, handle: str) -> tuple[bool, float, float, str]:
-        return self._markers_and_regions()[int(handle.removeprefix("(ProjectMarker*)"))]
-
-    def GetRegionOrMarkerInfo_Value(self, project: int, handle: str, param: str) -> float:
-        is_region, start, end, _ = self._marker(handle)
-        return {"B_ISREGION": float(is_region), "D_STARTPOS": start, "D_ENDPOS": end}[param]
-
-    def GetSetRegionOrMarkerInfo_String(self, project, handle, param, value, is_set) -> list:
-        if param != "P_NAME":
-            return [False, project, handle, param, "", is_set]
-        if is_set:
-            self._rename_marker(handle, value)
-        return [True, project, handle, param, self._marker(handle)[3], is_set]
-
-    def _rename_marker(self, handle: str, name: str) -> None:
-        is_region, start, end, _ = self._marker(handle)
-        if is_region:
-            self.regions = [(s, e, name if (s, e) == (start, end) else n) for s, e, n in self.regions]
-        else:
-            self.markers = [(p, name if p == start else n) for p, n in self.markers]
-
     # Tracks
 
     def CountTracks(self, project: int) -> int:
@@ -371,38 +341,6 @@ class FakeReaper(Items, Session, Recording, Transport):
                 state.items.sort(key=lambda item: item.position)
         return 1
 
-    def TrackFX_SetParamNormalized(self, track: str, fx: int, param: int, value: float) -> bool:
-        self.track(track).fxs[fx].values[param] = value
-        return True
-
-    def TrackFX_SetPreset(self, track: str, fx: int, preset: str) -> bool:
-        state = self.track(track).fxs[fx]
-        if preset not in PRESETS[state.plugin]:
-            return False
-        state.preset = preset
-        return True
-
-    def _display(self, state, param: int, value: float) -> str:
-        if state.plugin == "ReaLimit" and param == 0:
-            return f"{value * 72 - 60:+.2f} dB"  # ReaLimit's threshold: -60..+12 dB
-        if state.plugin == "ReaLimit" and param == 2:
-            # ReaLimit's release falls from "inf" as the control rises. A stand-in
-            # curve; REAPER's own is exercised by tests/live.
-            return "inf" if value <= 0 else f"{6 / value**0.5:.1f} dB/sec"
-        return f"{value:.2f}"
-
-    def TrackFX_GetFormattedParamValue(self, track, fx, param, buf, size) -> list:
-        state = self.track(track).fxs[fx]
-        return [True, track, fx, param, self._display(state, param, state.values[param]), size]
-
-    def TrackFX_FormatParamValueNormalized(self, track, fx, param, value, buf, size) -> list:
-        state = self.track(track).fxs[fx]
-        return [True, track, fx, param, value, self._display(state, param, value), size]
-
-    def TrackFX_Delete(self, track: str, fx_index: int) -> bool:
-        del self.track(track).fxs[fx_index]
-        return True
-
     # Sends
 
     def CreateTrackSend(self, source: str, dest: str) -> int:
@@ -438,43 +376,16 @@ class FakeReaper(Items, Session, Recording, Transport):
         # REAPER's Python binding returns P_DESTTRACK as the pointer's address, a number.
         destination = float(int(send.dest.split("0x")[1], 16))
         return {"D_VOL": send.volume, "D_PAN": send.pan, "B_MUTE": float(send.muted),
-                "P_DESTTRACK": destination}[param]
+                "I_SENDMODE": float(send.mode), "P_DESTTRACK": destination}[param]
 
     def SetTrackSendInfo_Value(self, track, category, i, param, value) -> bool:
         sends = self.track(track).sends
         if not 0 <= i < len(sends):
             return False  # REAPER reports a bad send index by returning false
         send = sends[i]
-        if param == "D_VOL":
-            send.volume = value
-        elif param == "D_PAN":
-            send.pan = value
+        if param in SEND_FIELDS:
+            setattr(send, SEND_FIELDS[param], type(getattr(send, SEND_FIELDS[param]))(value))
         return True
-
-    # Envelopes
-
-    def GetTrackEnvelopeByName(self, track: str, name: str) -> str:
-        # REAPER returns a null pointer string, not "", for a missing envelope.
-        if (track, name) not in self.envelopes:
-            return "(TrackEnvelope*)0x0000000000000000"
-        return f"(TrackEnvelope*){track}|{name}"
-
-    def InsertEnvelopePoint(self, envelope, time, value, shape, tension, selected, no_sort) -> bool:
-        track, name = envelope.removeprefix("(TrackEnvelope*)").rsplit("|", 1)
-        self.envelopes[(track, name)].append((time, value))
-        return True
-
-    def Envelope_SortPoints(self, envelope: str) -> bool:
-        return True
-
-    def GetEnvelopeScalingMode(self, envelope: str) -> int:
-        """REAPER's volume envelopes use fader scaling (1); pan is linear (0)."""
-        return 1 if envelope.endswith("|Volume") else 0
-
-    def ScaleToEnvelopeMode(self, mode: int, value: float) -> float:
-        """A stand-in for REAPER's fader curve, distinguishable from the raw
-        value; the real curve is exercised by tests/live (-6 dB renders -6 dB)."""
-        return value * 1000.0 if mode == 1 else value
 
 
 # ReaScript functions are capitalized, except a few REAPER names in lower case

@@ -99,11 +99,11 @@ class FakeProject:
         return [FakeRegion(s, e) for s, e, _ in self._reaper.regions]
 
     def add_marker(self, position, name="", color=0) -> FakeMarker:
-        self._reaper.markers.append((position, name))
+        self._reaper.AddRegionOrMarker(0, False, position, position, name, -1, color)
         return FakeMarker(position)
 
     def add_region(self, start, end, name="", color=0) -> FakeRegion:
-        self._reaper.regions.append((start, end, name))
+        self._reaper.AddRegionOrMarker(0, True, start, end, name, -1, color)
         return FakeRegion(start, end)
 
     def add_track(self, index=0, name="") -> FakeTrack:

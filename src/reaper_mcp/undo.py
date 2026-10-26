@@ -38,7 +38,8 @@ UNDO_PREFIX = "MCP: "
 # block, and the history should not pass it off as a change.
 FAILED_SUFFIX = " (failed)"
 # Tool arguments that name tracks by index, checked before an undo block opens.
-TRACK_INDEX_ARGS = ("track_index", "source_track_index", "dest_track_index")
+TRACK_INDEX_ARGS = ("track_index", "source_track_index", "dest_track_index", "to_track_index",
+                    "folder_track_index")
 TRACK_INDEX_LISTS = ("track_indices",)
 MAX_ARG_TEXT = 40
 

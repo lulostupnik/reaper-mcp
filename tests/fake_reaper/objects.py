@@ -18,12 +18,13 @@ if TYPE_CHECKING:
     from tests.fake_reaper.api import FakeReaper
 
 # Presets each fake plugin ships with.
-PRESETS = {"ReaEQ": ["Bright", "Warm"], "ReaComp": ["Gentle"], "ReaLimit": [], "ReaSynth": []}
+PRESETS = {"ReaEQ": ["Bright", "Warm"], "ReaComp": ["Gentle"], "ReaLimit": [], "ReaSynth": [],
+           "ReaGate": []}
 
 # REAPER's values for track settings a new track's info dict leaves out.
 TRACK_DEFAULTS = {"I_RECARM": 0.0, "I_RECINPUT": 0.0, "I_RECMON": 0.0, "I_RECMODE": 0.0,
                   "B_MAINSEND": 1.0, "I_FOLDERDEPTH": 0.0, "I_FREEMODE": 0.0,
-                  "I_NUMFIXEDLANES": 0.0}
+                  "I_NUMFIXEDLANES": 0.0, "I_AUTOMODE": 0.0}
 
 # The plugins the fake REAPER has installed; anything else is "not found".
 INSTALLED_FX = {
@@ -31,7 +32,29 @@ INSTALLED_FX = {
     "ReaComp": ["Thresh", "Ratio", "Attack", "Release"],
     "ReaLimit": ["Threshold", "Ceiling", "Release"],
     "ReaSynth": ["Volume", "Tuning"],
+    "ReaGate": ["Gain", "Bypass"],
 }
+
+
+def display(plugin: str, param: int, value: float) -> str:
+    """What a fake plugin displays for a normalized value. Stand-in curves,
+    in the units REAPER's own plugins show; tests/live exercises the real ones."""
+    name = INSTALLED_FX[plugin][param]
+    if plugin == "ReaLimit" and name == "Threshold":
+        return f"{value * 72 - 60:+.2f} dB"  # ReaLimit's threshold: -60..+12 dB
+    if plugin == "ReaLimit" and name == "Release":
+        # ReaLimit's release falls from "inf" as the control rises.
+        return "inf" if value <= 0 else f"{6 / value**0.5:.1f} dB/sec"
+    if name.startswith("Gain"):
+        return "-inf" if value <= 0 else f"{value * 48 - 24:+.1f} dB"
+    if name.startswith("Freq"):
+        hertz = 20 * 1000**value
+        return f"{hertz / 1000:.2f} kHz" if hertz >= 1000 else f"{hertz:.1f} Hz"
+    if name in ("Attack", "Release"):
+        return f"{value * 500:.1f} ms"
+    if name == "Bypass":
+        return "On" if value >= 0.5 else "Off"
+    return f"{value:.2f}"
 
 
 @dataclass
@@ -48,6 +71,7 @@ class Send:
     volume: float = 1.0
     pan: float = 0.0
     muted: bool = False
+    mode: int = 0  # I_SENDMODE: post-fader
 
 
 @dataclass
@@ -100,7 +124,8 @@ class FakeFXParam(float):
 
     @property
     def formatted(self) -> str:
-        return f"{self.normalized:.2f}"
+        """reapy reads it with TrackFX_GetFormattedParamValue."""
+        return display(self._state.plugin, self._index, self.normalized)
 
 
 class FakeFX:
