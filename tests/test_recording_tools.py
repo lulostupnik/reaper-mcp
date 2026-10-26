@@ -279,6 +279,27 @@ def test_stop_recording_ignores_the_rest_of_an_item_it_cut(reaper, call, saved):
     assert len(track.items) == 3
 
 
+def test_stop_recording_over_an_item_reports_only_the_parts_playing_the_new_file(
+        reaper, call, saved):
+    """REAPER 7.69's default ("add takes"): recording from 1 s to 4 s over an item
+    from 0 s to 3 s splits it; the left part keeps playing the old file with an
+    empty take added, which is not a new take."""
+    from tests.fake_reaper.objects import ItemState
+
+    track = reaper.add_track("Vox")
+    old = ItemState(reaper.new_pointer("MediaItem"), 0.0, 3.0, midi=False,
+                    source_file=str(saved / "old.wav"))
+    track.items.append(old)
+    track.input_level, reaper.record_overlap = 0.5, "takes"
+    reaper.cursor = 1.0
+    call("start_recording", track_index=0)
+    takes = call("stop_recording")["takes"]
+    assert [(t["position"], t["length"]) for t in takes] == [(1.0, 2.0), (3.0, 1.0)]
+    assert {t["file"] for t in takes} == {str(saved / "Vox-001.wav")}
+    assert old.guid not in {t["item_guid"] for t in takes}
+    assert (old.length, old.extra_takes) == (1.0, 1)
+
+
 def test_stop_recording_warns_about_clipping(reaper, call, saved):
     _record(reaper, call, level=1.0)
     result = call("stop_recording")

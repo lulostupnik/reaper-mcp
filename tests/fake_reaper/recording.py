@@ -4,8 +4,9 @@ record modes, and recording itself.
 Modelled on REAPER's documentation and its Python binding (reaper_python.py):
 - GetAudioDeviceInfo returns (retval, attribute, desc, size); false, "" when
   the device is closed. GetInputOutputLatency returns (input, output) samples.
-  GetInputChannelName / kbd_getTextFromCmd decode a NULL result, which raises
-  through reapy (see session._null_string_error).
+  GetInputChannelName decodes a NULL result, which raises through reapy (see
+  session._null_string_error). kbd_getTextFromCmd gives "" for an unknown
+  command on REAPER 7.69 (seen live).
 - Track_GetPeakInfo is linear (1.0 = 0 dB); Track_GetPeakHoldDB is in
   hundredths of a dB. An armed track's meter shows its input.
 - Transport: Record arms nothing by itself: armed tracks with an input and a
@@ -20,7 +21,11 @@ Modelled on REAPER's documentation and its Python binding (reaper_python.py):
   on top; "add_take" adds the take to the existing item (loop/lane recording,
   "add takes to existing items": same GUID, one more take); "split" cuts the
   existing item around the take (auto-punch), the right-hand part a new item
-  (new GUID) playing the old file.
+  (new GUID) playing the old file; "takes" is REAPER 7.69's default, seen
+  live: the existing item is split at the take's edges, the parts outside it
+  keep the old file and gain an empty take, the part under it becomes a new
+  item whose active take is the new file, and the take past the old item's
+  end is a new item too.
 - RECORD_FORMAT is stored as REAPER's whole sink config, so a short config
   reads back longer (see api._sink_config).
 - The metronome flags live in the project config variable "projmetroen":
@@ -134,6 +139,9 @@ class Recording:
             overlapped[0].extra_takes += 1
             overlapped[0].source_file = source
             return True
+        if self.record_overlap == "takes":
+            self._record_as_takes(track, overlapped, start, end, source)
+            return True
         for item in overlapped:  # "split"
             item_end = item.position + item.length
             if item_end > end:
@@ -142,6 +150,28 @@ class Recording:
             item.length = max(0.0, start - item.position)
         track.items[:] = [i for i in track.items if i.length > 0]
         return False
+
+    def _record_as_takes(self: FakeReaper, track, overlapped, start, end, source) -> None:
+        def piece(position, length, file, extra_takes):
+            item = ItemState(self.new_pointer("MediaItem"), position, length, midi=False,
+                             source_file=file, extra_takes=extra_takes)
+            track.items.append(item)
+
+        covered = start
+        for item in sorted(overlapped, key=lambda i: i.position):
+            item_end = item.position + item.length
+            if item.position > covered:
+                piece(covered, item.position - covered, source, 1)
+            if item_end > end:
+                piece(end, item_end - end, item.source_file, item.extra_takes + 1)
+            piece(max(start, item.position), min(end, item_end) - max(start, item.position),
+                  source, item.extra_takes + 1)
+            item.length = start - item.position
+            item.extra_takes += 1
+            covered = min(end, item_end)
+        if covered < end:
+            piece(covered, end - covered, source, 1)
+        track.items[:] = [i for i in track.items if i.length > 0]
 
     def _write_take(self: FakeReaper, track) -> Path:
         extension, subtype = _format(str(self.project_info.get("RECORD_FORMAT", "")))
@@ -166,9 +196,7 @@ class Recording:
     # Actions and options
 
     def kbd_getTextFromCmd(self: FakeReaper, command: int, section: int) -> str:
-        if command not in ACTION_NAMES:
-            raise _null_string_error()
-        return ACTION_NAMES[command]
+        return ACTION_NAMES.get(command, "")
 
     def GetToggleCommandState(self: FakeReaper, command: int) -> int:
         if command == TOGGLE_METRONOME:

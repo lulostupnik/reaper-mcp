@@ -271,13 +271,20 @@ def _item_states() -> dict[str, tuple[int, str | None]]:
 
 
 def _is_take(item, before: dict[str, tuple[int, str | None]], old_files: set[str]) -> bool:
-    """Whether the recording made this item or added a take to it. A new item
-    playing a file from before is the rest of an item the recording cut
-    (auto-punch), not a take."""
+    """Whether the recording made this item or added a take to it: it plays a
+    file that did not exist before. Recording over an item ("add takes") splits
+    it, and the parts outside the recording keep playing the old file with an
+    empty take added; an item playing a file from before (also the rest of an
+    item auto-punch cut) is not a take. MIDI takes have no file: an existing
+    MIDI item counts when it gained a take."""
+    file = _source_file(item)
     guid = item_guid(item)
     if guid in before:
-        return before[guid] != (item.n_takes, _source_file(item))
-    return _source_file(item) not in old_files
+        takes, old_file = before[guid]
+        if file is None and old_file is None:
+            return item.n_takes > takes
+        return file != old_file and file not in old_files
+    return file not in old_files
 
 
 def _new_takes(before: dict[str, tuple[int, str | None]]) -> list[dict]:
