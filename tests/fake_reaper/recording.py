@@ -58,6 +58,8 @@ ACTION_NAMES = {
     41929: "New project tab, ignore default template",
     42230: "File: Render project, using the most recent render settings, auto-close render dialog",
     40363: "Options: Show metronome/pre-roll settings",
+    40362: "Item: Glue items, ignoring time selection",
+    40131: "Take: Crop to active take in items",
 }
 TOGGLE_METRONOME = 40364
 PUNCH_COMMANDS = {40252: "normal", 40076: "time_selection", 40253: "selected_items"}
@@ -228,29 +230,6 @@ class Recording:
             self.peak_hold_clears += 1
         level = self._meter(track)
         return max(-150.0, 20 * np.log10(level)) / 100 if level > 0 else -1.5
-
-    # Takes and sources
-
-    def _item_by_hex(self: FakeReaper, pointer: str) -> ItemState | None:
-        suffix = pointer.split("0x")[-1]
-        for track in self.tracks:
-            for item in track.items:
-                if item.pointer.endswith(suffix):
-                    return item
-        return None
-
-    def GetActiveTake(self: FakeReaper, item: str) -> str:
-        _, state = self._item(item)
-        suffix = "0" * 16 if not state.has_take else item.split("0x")[-1]
-        return f"(MediaItem_Take*)0x{suffix}"
-
-    def GetMediaItemTake_Source(self: FakeReaper, take: str) -> str:
-        return "(PCM_source*)0x" + take.split("0x")[-1]
-
-    def GetMediaSourceFileName(self: FakeReaper, source: str, buf: str, size: int) -> list:
-        """In-project MIDI sources have no file name."""
-        item = self._item_by_hex(source)
-        return [source, item.source_file if item else "", size]
 
 
 def track_template_text(names: list[str], *, with_items: bool) -> str:

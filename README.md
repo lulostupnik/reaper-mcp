@@ -109,7 +109,7 @@ reaper-mcp-server          # start the server
 reaper-mcp-server --debug  # with debug logging
 ```
 
-## Tools (83)
+## Tools (98)
 
 ### Context and Undo
 `get_context` `get_project_summary` `undo` `redo` `get_undo_state`
@@ -143,6 +143,11 @@ Inserts saved `.RTrackTemplate` files from REAPER's TrackTemplates folder (subfo
 
 ### Audio
 `import_audio_file` `edit_audio_item` `adjust_pitch` `adjust_playback_rate`
+
+### Items and Takes
+`list_items` `edit_item` `split_item` `delete_item` `move_item` `duplicate_item` `trim_item_to_time_selection` `glue_items` `remove_silence` `trim_silence` `normalize_item` `list_takes` `set_active_take` `crop_to_active_take` `suggest_best_take`
+
+Items are named by GUID (from `list_items`), which survives splits and moves of other items, or by index on a track (indices shift after every split, delete or move, so tools that used one remind you of the GUID). `list_items` is compact by default; `detail=true` adds fades, volumes and source files. `edit_item` sets exact values: `start`/`end` trim the edges without moving the audio, a fade of 0 removes it (automatic crossfades included); `move_item` moves whole items. `edit_audio_item` is legacy (relative trims; a fade of 0 there leaves the fade alone). `remove_silence` and `trim_silence` analyze the active take's own audio file (start offset, playrate and channel mode included; reversed takes and takes with stretch markers are refused, take FX are warned about, other takes are cut at the same places) and never open REAPER's Dynamic split dialog; `dry_run=true` previews the cuts, the seconds removed and the pieces left. `normalize_item` sets the take volume so the recording, with the item's own volume, reaches the target. `glue_items` renders a new file (active take, FX, volume and fades baked in) and refuses items with several takes. Locked items are refused until `edit_item locked=false`. `suggest_best_take` checks takes (or REAPER 7 fixed lanes) for clipping, a very low level and sound that stops early, never ranks by loudness, reports ties for you to judge by ear, and changes nothing.
 
 ### Mixing
 `set_track_volume` `set_track_pan` `set_track_mute` `set_track_solo` `set_send_volume` `set_master_volume` `add_volume_automation` `add_pan_automation`

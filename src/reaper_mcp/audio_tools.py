@@ -1,4 +1,4 @@
-from reaper_mcp import actions
+from reaper_mcp import actions, items
 from reaper_mcp.actions import STOP_SAVE_RECORDED, TRANSPORT_STOP
 from reaper_mcp.guids import item_guid
 from reaper_mcp.project_tools import absolute_path
@@ -85,10 +85,12 @@ def edit_audio_item(
     fade_out: float = 0.0,
 ) -> dict:
     """
-    Trim an audio item and/or add fades. All values in seconds.
+    Legacy: prefer edit_item (exact start/end and fades, items named by GUID).
+    Trim an audio item by relative amounts and/or add fades. All values in seconds.
     start_trim: seconds to remove from the beginning.
     end_trim: seconds to remove from the end.
-    fade_in/fade_out: fade length in seconds.
+    fade_in/fade_out: fade length in seconds. Unlike edit_item, 0 here leaves
+    the fade as it is (edit_item fade_in=0 removes it).
     """
     item = get_project().tracks[track_index].items[item_index]
     if start_trim < 0 or end_trim < 0 or start_trim + end_trim >= item.length:
@@ -117,14 +119,9 @@ def edit_audio_item(
 
 def _trim_start(item, seconds: float) -> None:
     """Move the item's start later, keeping the audio where it was in time:
-    the take's source offset moves too, in source seconds (scaled by playrate).
-    reapy's Take.start_offset is read-only, so D_STARTOFFS is set directly."""
-    item.position += seconds
-    item.length -= seconds
-    if item.n_takes:  # reapy's active_take is truthy even when there is none
-        take = item.active_take
-        offset = take.get_info_value("D_STARTOFFS")
-        take.set_info_value("D_STARTOFFS", offset + seconds * take.get_info_value("D_PLAYRATE"))
+    every take's source offset moves too (see items.set_start), not only the
+    active one's, so the other takes stay aligned."""
+    items.set_start(item.id, item.position + seconds)
 
 
 @edits(idempotent=True)

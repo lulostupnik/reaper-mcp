@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from reapy.errors import DistError
 
-from tests.fake_reaper.objects import ItemState, TrackState
+from tests.fake_reaper.objects import ItemState
 
 if TYPE_CHECKING:
     from tests.fake_reaper.api import FakeReaper
@@ -168,13 +168,6 @@ class Session:
 
     # Items
 
-    def _item(self: FakeReaper, pointer: str) -> tuple[TrackState, ItemState]:
-        for track in self.tracks:
-            for item in track.items:
-                if item.pointer == pointer:
-                    return track, item
-        raise ValueError(f"no item {pointer}")
-
     def _selected_items(self: FakeReaper) -> list[ItemState]:
         return [item for track in self.tracks for item in track.items if item.selected]
 
@@ -186,15 +179,3 @@ class Session:
 
     def GetMediaItem_Track(self: FakeReaper, item: str) -> str:
         return self._item(item)[0].pointer
-
-    def GetMediaItemInfo_Value(self: FakeReaper, item: str, param: str) -> float:
-        track, state = self._item(item)
-        values = {"IP_ITEMNUMBER": float(track.items.index(state)),
-                  "D_POSITION": state.position, "D_LENGTH": state.length}
-        return values[param] if param in values else state.info[param]
-
-    def GetSetMediaItemInfo_String(self: FakeReaper, item, param, value, is_set) -> list:
-        _, state = self._item(item)
-        if param != "GUID" or is_set:
-            return [False, item, param, "", is_set]
-        return [True, item, param, state.guid, is_set]

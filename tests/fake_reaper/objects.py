@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from tests.fake_reaper.item_state import NULL_TAKE, ItemState, Note, TakeState
+
 if TYPE_CHECKING:
     from tests.fake_reaper.api import FakeReaper
 
@@ -20,7 +22,8 @@ PRESETS = {"ReaEQ": ["Bright", "Warm"], "ReaComp": ["Gentle"], "ReaLimit": [], "
 
 # REAPER's values for track settings a new track's info dict leaves out.
 TRACK_DEFAULTS = {"I_RECARM": 0.0, "I_RECINPUT": 0.0, "I_RECMON": 0.0, "I_RECMODE": 0.0,
-                  "B_MAINSEND": 1.0, "I_FOLDERDEPTH": 0.0}
+                  "B_MAINSEND": 1.0, "I_FOLDERDEPTH": 0.0, "I_FREEMODE": 0.0,
+                  "I_NUMFIXEDLANES": 0.0}
 
 # The plugins the fake REAPER has installed; anything else is "not found".
 INSTALLED_FX = {
@@ -37,38 +40,6 @@ class FXState:
     values: list[float]
     enabled: bool = True
     preset: str = ""
-
-
-@dataclass
-class Note:
-    start: float
-    end: float
-    pitch: int
-    velocity: int
-    channel: int
-
-
-@dataclass
-class ItemState:
-    pointer: str
-    position: float
-    length: float
-    midi: bool
-    notes: list[Note] = field(default_factory=list)
-    has_take: bool = True  # REAPER items can hold no take at all
-    extra_takes: int = 0  # takes besides the active one (recorded into an existing item)
-    info: dict[str, float] = field(
-        default_factory=lambda: {"D_FADEINLEN": 0.0, "D_FADEOUTLEN": 0.0}
-    )
-    take_info: dict[str, float] = field(
-        default_factory=lambda: {"D_STARTOFFS": 0.0, "D_PITCH": 0.0, "D_PLAYRATE": 1.0}
-    )
-    selected: bool = False
-    source_file: str = ""  # the take's audio file; "" for MIDI and imported stand-ins
-
-    @property
-    def guid(self) -> str:
-        return "{" + self.pointer[-8:] + "-1111-1111-1111-111111111111}"
 
 
 @dataclass
@@ -167,32 +138,33 @@ class FakeFX:
 
 
 class FakeTake:
-    def __init__(self, state: ItemState) -> None:
+    def __init__(self, state: TakeState, item: ItemState) -> None:
         self._state = state
+        self._item = item
 
     @property
     def is_midi(self) -> bool:
-        return self._state.midi
+        return self._item.midi
 
     @property
     def name(self) -> str:
-        return "take"
+        return self._state.name
 
     @property
     def start_offset(self) -> float:
-        return self._state.take_info["D_STARTOFFS"]
+        return self._state.info["D_STARTOFFS"]
 
     def get_info_value(self, param: str) -> float:
-        return self._state.take_info[param]
+        return self._state.value(param)
 
     def set_info_value(self, param: str, value: float) -> None:
-        self._state.take_info[param] = value
+        self._state.info[param] = value
 
     def add_note(
         self, start, end, pitch, velocity=100, channel=0, selected=False,
         muted=False, unit="seconds", sort=True,
     ) -> None:
-        self._state.notes.append(Note(start, end, pitch, velocity, channel))
+        self._item.notes.append(Note(start, end, pitch, velocity, channel))
 
 
 class FakeItem:
@@ -218,14 +190,17 @@ class FakeItem:
 
     @property
     def active_take(self) -> FakeTake:
-        return FakeTake(self._state)
+        """reapy returns a Take even for an item without one (a null take)."""
+        if not self._state.takes:
+            return FakeTake(TakeState(pointer=NULL_TAKE), self._state)
+        return FakeTake(self._state.take, self._state)
 
     @property
     def n_takes(self) -> int:
-        return 1 + self._state.extra_takes if self._state.has_take else 0
+        return len(self._state.takes)
 
     def get_info_value(self, param: str) -> float:
-        return self._state.info[param]
+        return self._state.value(param)
 
     def set_info_value(self, param: str, value: float) -> None:
         self._state.info[param] = value

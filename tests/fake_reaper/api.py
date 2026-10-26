@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from reaper_mcp.reaper import ReaScriptAPI
+from tests.fake_reaper.items import Items
 from tests.fake_reaper.objects import PRESETS, ItemState, Send, TrackState
 from tests.fake_reaper.project import FakeProject
 from tests.fake_reaper.recording import Recording, template_track_names, track_template_text
@@ -51,7 +52,7 @@ def _sink_config(value: str) -> str:
 
 
 @dataclass
-class FakeReaper(Session, Recording, Transport):
+class FakeReaper(Items, Session, Recording, Transport):
     tmp: Path
     bpm: float = 120.0
     # bpm is in quarter notes, as REAPER displays it. The project-settings time
@@ -87,6 +88,9 @@ class FakeReaper(Session, Recording, Transport):
     length: float = 4.0
     # Track names the user's default project template gives a new project tab.
     default_template_tracks: list[str] = field(default_factory=list)
+    # Glue keeps the first selected item (its GUID) and gives it the glued take,
+    # instead of making a new item; real REAPER's way is not confirmed yet.
+    glue_reuses_first_item: bool = False
     _pointer: int = 0
 
     def __post_init__(self) -> None:
@@ -129,7 +133,7 @@ class FakeReaper(Session, Recording, Transport):
             self.render_solos.append([t.name for t in self.tracks if t.info["I_SOLO"]])
         elif command in (NEW_PROJECT_TAB, NEW_PROJECT_TAB_FROM_TEMPLATE):
             self._new_tab(from_template=command == NEW_PROJECT_TAB_FROM_TEMPLATE)
-        elif self.recording_command(command):
+        elif self.recording_command(command) or self.item_command(command):
             pass
         elif command in TRANSPORT:
             self.transport = TRANSPORT[command]
@@ -320,7 +324,18 @@ class FakeReaper(Session, Recording, Transport):
             state.sends = [send for send in state.sends if send.dest != track]
 
     def SetMediaTrackInfo_Value(self, track: str, param: str, value: float) -> bool:
-        self.track(track).info[param] = value
+        """C_LANEPLAYS:N on a fixed-lane track sets which lane plays; 1 plays it
+        exclusively, so the other lanes stop playing."""
+        state = self.track(track)
+        if param.startswith("C_LANEPLAYS:"):
+            lane = int(param.split(":")[1])
+            for item in state.items:
+                if item.value("I_FIXEDLANE") == lane:
+                    item.info["C_LANEPLAYS"] = value
+                elif value == 1:
+                    item.info["C_LANEPLAYS"] = 0.0
+            return True
+        state.info[param] = value
         return True
 
     def ColorToNative(self, r: int, g: int, b: int) -> int:

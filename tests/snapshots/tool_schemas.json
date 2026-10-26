@@ -544,6 +544,76 @@
       "type": "object"
     }
   },
+  "crop_to_active_take": {
+    "description": "Delete every take of an item except the active one (undo brings them\nback; the files stay on disk). Choose the take first with set_active_take.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "crop_to_active_takeArguments",
+      "type": "object"
+    }
+  },
+  "delete_item": {
+    "description": "Delete an item from its track (undo brings it back).\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "delete_itemArguments",
+      "type": "object"
+    }
+  },
   "delete_track": {
     "description": "Delete a track.\ntrack_index: the track's index, or its GUID from list_tracks (safer: a GUID\nstill names the same track after tracks were added, deleted or moved).",
     "input_schema": {
@@ -575,8 +645,67 @@
       "type": "object"
     }
   },
+  "duplicate_item": {
+    "description": "Copy an item (with all its takes, fades and settings) as a new item with\nnew GUIDs. position: where the copy starts (seconds; default right after the\noriginal). dest_track_index: the track for the copy (default the same track).\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "dest_track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dest Track Index"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "duplicate_itemArguments",
+      "type": "object"
+    }
+  },
   "edit_audio_item": {
-    "description": "Trim an audio item and/or add fades. All values in seconds.\nstart_trim: seconds to remove from the beginning.\nend_trim: seconds to remove from the end.\nfade_in/fade_out: fade length in seconds.",
+    "description": "Legacy: prefer edit_item (exact start/end and fades, items named by GUID).\nTrim an audio item by relative amounts and/or add fades. All values in seconds.\nstart_trim: seconds to remove from the beginning.\nend_trim: seconds to remove from the end.\nfade_in/fade_out: fade length in seconds. Unlike edit_item, 0 here leaves\nthe fade as it is (edit_item fade_in=0 removes it).",
     "input_schema": {
       "properties": {
         "end_trim": {
@@ -613,6 +742,137 @@
         "item_index"
       ],
       "title": "edit_audio_itemArguments",
+      "type": "object"
+    }
+  },
+  "edit_item": {
+    "description": "Set an item's settings to exact values; anything left out stays as it is.\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nstart/end: where the item starts/ends (project seconds); the audio stays where\nit is in time, so this trims (or uncovers) the item's edges. To move the\nwhole item use move_item.\nfade_in/fade_out: fade length in seconds, 0 removes the fade.\nvolume_db: the item's own volume, the one to use for \"make this louder/quieter\".\ntake_volume_db: the active take's volume, which normalize_item sets; usually\nleave it alone. Both add up, and the track's volume comes on top.\nmuted, locked: locked=false unlocks a locked item (and allows the other changes).",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "fade_in": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fade In"
+        },
+        "fade_out": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fade Out"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "locked": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locked"
+        },
+        "muted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Muted"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "take_volume_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Take Volume Db"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        },
+        "volume_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume Db"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "edit_itemArguments",
       "type": "object"
     }
   },
@@ -693,6 +953,44 @@
       "type": "object"
     }
   },
+  "glue_items": {
+    "description": "Glue items of one track into a single item playing a new audio file that\nREAPER renders (into the project's recording folder). The originals are\nreplaced; gaps between them become silence. What you hear is baked into the\nnew file: the active take only, its take FX, item and take volume, and fades.\nItems with more than one take are refused (crop_to_active_take first). Rarely\nneeded: splits, moves and remove_silence work without gluing.\nitems_to_glue: the items' GUIDs from list_items (preferred), or their\nindices on track_index.",
+    "input_schema": {
+      "properties": {
+        "items_to_glue": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Items To Glue",
+          "type": "array"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "items_to_glue"
+      ],
+      "title": "glue_itemsArguments",
+      "type": "object"
+    }
+  },
   "import_audio_file": {
     "description": "Import an audio file onto a track at the given position (seconds).\nSupports all formats REAPER can read: wav, aiff, mp3, flac, ogg, etc.",
     "input_schema": {
@@ -747,6 +1045,32 @@
       "type": "object"
     }
   },
+  "list_items": {
+    "description": "List the items of every track, or of one track: GUID, track, item index,\nposition and length (seconds), muted, locked, take count, the active take's\nname and whether it is MIDI; on REAPER 7 fixed-lane tracks also the item's\nlane and whether that lane plays. detail=true adds fade lengths (manual and\nautomatic crossfade, seconds), item volume (dB), and the active take's start\noffset, playrate, volume (dB) and source file.",
+    "input_schema": {
+      "properties": {
+        "detail": {
+          "default": false,
+          "title": "Detail",
+          "type": "boolean"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "title": "list_itemsArguments",
+      "type": "object"
+    }
+  },
   "list_master_fx": {
     "description": "List all FX plugins on the master track.",
     "input_schema": {
@@ -776,6 +1100,41 @@
         "track_index"
       ],
       "title": "list_sendsArguments",
+      "type": "object"
+    }
+  },
+  "list_takes": {
+    "description": "List an item's takes: index, name, GUID, which one is active (plays),\nsource file, start offset, playrate and take volume (dB). On a REAPER 7\nfixed-lane track also the overlapping lanes (lane number, whether it plays,\nthe lane item's GUID).\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "list_takesArguments",
       "type": "object"
     }
   },
@@ -853,6 +1212,65 @@
       "type": "object"
     }
   },
+  "move_item": {
+    "description": "Move a whole item (its audio with it) in time and/or to another track.\nposition: the new start (seconds); dest_track_index: the track to move it to.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "dest_track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dest Track Index"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "move_itemArguments",
+      "type": "object"
+    }
+  },
   "new_project_from_template": {
     "description": "Start a new project from a project template, in a new project tab (the\ncurrent project stays open in its tab). template: a name from\nlist_project_templates, or the path of a .RPP file. The new project is\nuntitled: save it with save_project before recording. Each call opens\nanother tab, so do not retry it just to be sure.",
     "input_schema": {
@@ -866,6 +1284,58 @@
         "template"
       ],
       "title": "new_project_from_templateArguments",
+      "type": "object"
+    }
+  },
+  "normalize_item": {
+    "description": "Normalize an audio item by setting its active take's volume so the\nrecording, together with the item's own volume, reaches target_db.\nmode \"peak\": loudest sample at target_db dBFS (default -1). mode \"lufs\":\nintegrated loudness at target_db LUFS (default -18, a comfortable level for\nmixing). Take FX and the track's volume still apply on top. Only the take\nvolume changes; the file is untouched.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "mode": {
+          "default": "peak",
+          "title": "Mode",
+          "type": "string"
+        },
+        "target_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Db"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "normalize_itemArguments",
       "type": "object"
     }
   },
@@ -958,6 +1428,66 @@
         "send_index"
       ],
       "title": "remove_sendArguments",
+      "type": "object"
+    }
+  },
+  "remove_silence": {
+    "description": "Remove the silent parts of an audio item: it is split around each stretch\nquieter than threshold_db (RMS dBFS of the recording, before item volume)\nlasting at least min_silence seconds, and those pieces are deleted.\npadding: seconds of quiet kept next to the sound, so breaths and note tails\nare not cut. fade: a short fade (seconds) where sound was cut, against clicks.\ndry_run=true only reports what would be removed (ranges, total seconds and how\nmany pieces would stay). Raise threshold_db (e.g. -35) for a noisy recording;\nlower it (e.g. -55) if quiet notes get cut. Only the active take is analyzed.\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nReturns the removed time ranges and the GUIDs of the pieces kept.",
+    "input_schema": {
+      "properties": {
+        "dry_run": {
+          "default": false,
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "fade": {
+          "default": 0.01,
+          "title": "Fade",
+          "type": "number"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "min_silence": {
+          "default": 0.4,
+          "title": "Min Silence",
+          "type": "number"
+        },
+        "padding": {
+          "default": 0.1,
+          "title": "Padding",
+          "type": "number"
+        },
+        "threshold_db": {
+          "default": -45.0,
+          "title": "Threshold Db",
+          "type": "number"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "remove_silenceArguments",
       "type": "object"
     }
   },
@@ -1254,6 +1784,46 @@
         "name"
       ],
       "title": "save_track_templateArguments",
+      "type": "object"
+    }
+  },
+  "set_active_take": {
+    "description": "Choose which take of an item plays (take_index, from list_takes); the\nother takes are kept. (On a REAPER 7 fixed-lane track, choose the playing\nlane in REAPER itself.)\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "take_index": {
+          "title": "Take Index",
+          "type": "integer"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item",
+        "take_index"
+      ],
+      "title": "set_active_takeArguments",
       "type": "object"
     }
   },
@@ -1730,6 +2300,49 @@
       "type": "object"
     }
   },
+  "split_item": {
+    "description": "Split an item at one or more times (project seconds, each inside the item\nand at least 1 ms from its edges; times closer than 1 ms count once).\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nReturns the pieces left to right with their GUIDs; the first keeps the\noriginal GUID, the others are new items.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "times": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Times",
+          "type": "array"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item",
+        "times"
+      ],
+      "title": "split_itemArguments",
+      "type": "object"
+    }
+  },
   "start_recording": {
     "description": "Start recording, after checking it can work: not already recording, audio\nrunning, the project saved (so takes are stored next to it), and each track\nthat will record has an input and a record mode that records. Playback is\nstopped first, so the take starts at position.\ntrack_index: the track to record on (armed here); by default the tracks\nalready armed. disarm_others: disarm every other track, so nothing else is\nrecorded by accident. position: start from here (seconds) instead of the edit\ncursor. save_first: save a never-saved project instead of refusing.\nWarns about monitoring, auto-punch and repeat. Stop with stop_recording.",
     "input_schema": {
@@ -1786,6 +2399,126 @@
     "input_schema": {
       "properties": {},
       "title": "stop_transportArguments",
+      "type": "object"
+    }
+  },
+  "suggest_best_take": {
+    "description": "Check an item's takes (or, on a REAPER 7 fixed-lane track, its lanes) for\ntechnical problems: clipping, a very low level, and sound that stops early\nor starts late compared with the others. Suggests a take only when exactly\none has the fewest problems; otherwise lists the tied ones (\"tied\"). Louder\nis not better: it cannot judge the performance, so listen before choosing,\nthen use set_active_take. Nothing is changed.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "suggest_best_takeArguments",
+      "type": "object"
+    }
+  },
+  "trim_item_to_time_selection": {
+    "description": "Trim an item to the time selection: the parts before and after it are\nremoved and the audio that stays does not move in time.\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nSet the time selection first with set_time_selection.",
+    "input_schema": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "trim_item_to_time_selectionArguments",
+      "type": "object"
+    }
+  },
+  "trim_silence": {
+    "description": "Trim the silence at the start and end of an audio item (nothing in the\nmiddle is touched); the audio that stays does not move in time.\nthreshold_db: RMS dBFS of the recording below which it counts as silence.\npadding: seconds of quiet kept before the first and after the last sound.\nitem: the item's GUID from list_items (preferred), or its index on track_index.",
+    "input_schema": {
+      "properties": {
+        "dry_run": {
+          "default": false,
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Item"
+        },
+        "padding": {
+          "default": 0.1,
+          "title": "Padding",
+          "type": "number"
+        },
+        "threshold_db": {
+          "default": -45.0,
+          "title": "Threshold Db",
+          "type": "number"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "trim_silenceArguments",
       "type": "object"
     }
   },

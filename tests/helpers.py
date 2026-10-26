@@ -41,3 +41,20 @@ def assert_no_track(result: dict) -> None:
     assert result["success"] is False, result
     assert re.fullmatch(r"No track -?\d+: there are \d+ \(indices start at 0\); nothing was changed",
                         result["error"]), result
+
+
+def write_wav(path, segments, rate=48000, channels=1):
+    """A wav of consecutive (seconds, amplitude) parts: a 220 Hz tone at that
+    peak amplitude, or silence for 0. Returns str(path)."""
+    import numpy as np
+    import soundfile as sf
+
+    parts = []
+    for seconds, amplitude in segments:
+        t = np.arange(round(seconds * rate)) / rate
+        parts.append(amplitude * np.sin(2 * np.pi * 220 * t))
+    data = np.concatenate(parts) if parts else np.zeros(0)
+    if channels > 1:
+        data = np.stack([data] * channels, axis=1)
+    sf.write(path, data, rate, subtype="FLOAT")
+    return str(path)

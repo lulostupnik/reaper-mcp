@@ -162,6 +162,18 @@ def test_edit_audio_item_trims_both_ends(reaper, call):
     assert track.items[0].take_info["D_STARTOFFS"] == 2.0
 
 
+def test_edit_audio_item_start_trim_keeps_every_take_aligned(reaper, call):
+    """Bug fix: only the active take's offset used to move, so switching to
+    another take after a start trim played it from the wrong place."""
+    track = _audio_item(reaper)
+    item = track.items[0]
+    item.extra_takes = 1  # a second take, now active
+    item.takes[0].info["D_PLAYRATE"] = 2.0
+    call("edit_audio_item", track_index=0, item_index=0, start_trim=1.0)
+    assert [t.info["D_STARTOFFS"] for t in item.takes] == [2.0, 1.0]
+    assert (item.position, item.length) == (2.0, 3.0)
+
+
 @pytest.mark.parametrize(("start_trim", "end_trim"), [(2.0, 2.0), (-1.0, 0.0), (0.0, 5.0)])
 def test_edit_audio_item_refuses_impossible_trims(reaper, call, start_trim, end_trim):
     track = _audio_item(reaper)
