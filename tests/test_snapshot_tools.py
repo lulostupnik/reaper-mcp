@@ -377,3 +377,23 @@ def test_compare_lists_at_most_max_differences_rows(mix, call, monkeypatch):
     result = call("compare_mix_snapshots", a="A", detail=True)
     assert sum(len(t.get("differences", [])) for t in result["tracks"]) == 3
     assert "only the first 3 are listed" in result["note"]
+
+
+def test_a_loud_fader_up_to_24_db_is_saved_and_recalled(mix, call):
+    assert call("set_track_volume", track_index=0, volume_db=15)["success"] is True
+    assert call("save_mix_snapshot", name="A")["success"] is True
+    assert call("compare_mix_snapshots", a="A")["success"] is True
+    mix.tracks[0].info["D_VOL"] = 1.0
+    assert call("recall_mix_snapshot", name="A")["success"] is True
+    assert mix.tracks[0].info["D_VOL"] == pytest.approx(db_to_linear(15.0))
+
+
+def test_save_refuses_a_mix_it_could_never_recall(mix, call):
+    call("set_track_volume", track_index=0, volume_db=30)
+    mix.dirty = False
+    result = call("save_mix_snapshot", name="A")
+    assert result["success"] is False
+    assert "Vocal: volume +30.0 dB is above +24 dB" in result["error"]
+    assert "Nothing was saved" in result["error"]
+    assert call("list_mix_snapshots")["snapshots"] == []
+    assert mix.dirty is False

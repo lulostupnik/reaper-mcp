@@ -49,7 +49,11 @@ CURRENT = "current"  # compare_mix_snapshots: the mix as it is now
 MASTER = "master"
 PARAM_EPSILON = 1e-5
 SETTING_EPSILON = 1e-4  # pan, volume: smaller differences are not worth reporting
-MAX_VOLUME = db_to_linear(12.0)  # the top of REAPER's fader
+# The loudest volume a snapshot holds: REAPER's fader goes to +12 dB by default
+# and up to +24 dB in its preferences, and set_track_volume does not clamp.
+# save_mix_snapshot refuses a mix above this, so every saved snapshot recalls.
+MAX_VOLUME_DB = 24.0
+MAX_VOLUME = db_to_linear(MAX_VOLUME_DB)
 NAME_BUFFER = 256
 VERSION = 1
 
@@ -172,6 +176,9 @@ def _invalid_track(track) -> str | None:
     name = track.get("name")
     checks = (("volume", 0.0, MAX_VOLUME), ("pan", -1.0, 1.0), ("mute", 0.0, 1.0),
               ("solo", 0.0, 6.0))
+    volume = track.get("volume")
+    if _number(volume, MAX_VOLUME, math.inf) and volume > MAX_VOLUME:
+        return f"{name}: volume {linear_to_db(volume):+.1f} dB is above {MAX_VOLUME_DB:+g} dB"
     for key, low, high in checks:
         if not _number(track.get(key), low, high):
             return f"{name}: {key} {track.get(key)!r} is not between {low:g} and {high:g}"

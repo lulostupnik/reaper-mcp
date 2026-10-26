@@ -14,6 +14,7 @@ from reaper_mcp.mix_snapshots import (
     capture_mix,
     delete_blob,
     find,
+    invalid,
     load,
     match_fx,
     param_changes,
@@ -76,6 +77,10 @@ def save_mix_snapshot(*, name: str, overwrite: bool = False) -> dict:
         return {"success": False, "error": f"there are already {MAX_SNAPSHOTS} snapshots; "
                                            "delete some with delete_mix_snapshot"}
     snapshot = capture_mix(name)
+    problem = invalid(snapshot)
+    if problem:  # it could be saved but never recalled or compared
+        return {"success": False, "error": f"the mix cannot be saved ({problem}); "
+                                           "turn that down first. Nothing was saved."}
     key = store("snap", snapshot)
     index = [e for e in index if e is not existing]
     index.append({"name": name, "key": key, "saved_at": snapshot["saved_at"],
