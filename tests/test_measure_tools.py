@@ -267,6 +267,23 @@ def test_master_fx_are_bypassed_for_the_measurement_and_switched_back_on(limited
     assert result["verdict"] == "verified"
 
 
+def test_tracks_with_solo_defeat_are_named_as_heard(band, call):
+    band.tracks[1].info["B_SOLO_DEFEAT"] = 1.0
+    alone = call("measure_track", track_index=0)
+    assert any("solo defeat" in n and "Guitar" in n for n in alone["notes"]), alone["notes"]
+    assert not any("solo defeat" in n for n in call("measure_track", track_index=1)["notes"])
+
+
+def test_bypassing_the_master_fx_leaves_no_undo_step_and_a_clean_project(limited, call):
+    """Each FX's own switch (TrackFX_SetEnabled) would record "FX bypass toggle"
+    and mark the project dirty (7.69); the chain's bypass (I_FXEN) does not."""
+    steps = list(limited.undo_steps)
+    limited.dirty = False
+    assert call("measure_track", track_index=0)["success"] is True
+    assert limited.undo_steps == steps and limited.dirty is False
+    assert limited.master.value("I_FXEN") == 1.0
+
+
 def test_through_a_master_limiter_a_fader_move_hides_and_the_reply_says_why(limited, call):
     before = call("measure_track", track_index=0, include_master_fx=True)
     call("set_track_volume", track_index=0, volume_db=3.0)

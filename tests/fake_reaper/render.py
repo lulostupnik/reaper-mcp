@@ -83,7 +83,9 @@ def _signal(reaper: FakeReaper, start: float, end: float, rate: int) -> np.ndarr
                          for amplitude, hz in reaper.signal], axis=1)
     channels[t >= reaper.length] = 0.0
     peak = float(np.max(np.abs(channels))) if len(channels) else 0.0
-    if any(fx.enabled and fx.plugin == "ReaLimit" for fx in reaper.master.fxs) and peak:
+    master_fx_on = bool(reaper.master.value("I_FXEN"))  # the master's FX chain bypass
+    if master_fx_on and any(fx.enabled and fx.plugin == "ReaLimit"
+                            for fx in reaper.master.fxs) and peak:
         channels *= min(1.0, LIMITER_CEILING / peak)
         peak = min(peak, LIMITER_CEILING)
     if _number(reaper, "RENDER_NORMALIZE") & NORMALIZE and peak:
@@ -92,13 +94,16 @@ def _signal(reaper: FakeReaper, start: float, end: float, rate: int) -> np.ndarr
 
 
 def _mix_gain(reaper: FakeReaper) -> float:
-    """1, unless reaper.mix_by_tracks: then the summed D_VOL of the tracks heard."""
+    """1, unless reaper.mix_by_tracks: then the summed D_VOL of the tracks heard.
+    As on 7.69: with any track soloed, the soloed ones (muted or not) and those
+    with solo defeat (unless muted); otherwise every unmuted track."""
     if not reaper.mix_by_tracks:
         return 1.0
-    tracks = [t for t in reaper.tracks if not t.info["B_MUTE"]]
-    soloed = [t for t in tracks if t.info["I_SOLO"]]
     if any(t.info["I_SOLO"] for t in reaper.tracks):
-        tracks = soloed
+        tracks = [t for t in reaper.tracks if t.info["I_SOLO"]
+                  or (t.value("B_SOLO_DEFEAT") and not t.info["B_MUTE"])]
+    else:
+        tracks = [t for t in reaper.tracks if not t.info["B_MUTE"]]
     return sum(t.info["D_VOL"] for t in tracks)
 
 

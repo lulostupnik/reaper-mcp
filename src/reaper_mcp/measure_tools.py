@@ -95,31 +95,28 @@ def soloed_alone(tracks, index: int) -> Iterator[bool]:
             _restore(tracks, solos, track=track, mute=mute)
 
 
-def _enable(fxs, states: list[bool]) -> None:
-    for fx, enabled in zip(fxs, states, strict=True):
-        if bool(fx.is_enabled) != enabled:
-            fx.is_enabled = enabled
-
-
 @contextmanager
 def master_fx_bypassed(project, *, bypass: bool) -> Iterator[list[str]]:
-    """The master track's FX bypassed for the body when bypass, then each put
-    back as it was (or owed to the next tool call when a call to REAPER was
-    lost). Yields the names of the master FX that are on."""
-    fxs = project.master_track.fxs
-    states = [bool(fx.is_enabled) for fx in fxs]
-    active = [fx.name for fx, on in zip(fxs, states, strict=True) if on]
+    """The master track's FX chain bypassed for the body when bypass (its
+    I_FXEN, the chain's bypass button), then put back as it was (or owed to
+    the next tool call when a call to REAPER was lost). Yields the names of
+    the master FX that are on. Not each FX's own switch: TrackFX_SetEnabled
+    records an "FX bypass toggle" undo step and marks the project dirty
+    (seen on 7.69); I_FXEN does neither."""
+    master = project.master_track
+    chain_on = master.get_info_value("I_FXEN")
+    active = [fx.name for fx in master.fxs if fx.is_enabled] if chain_on else []
     if not bypass or not active:
         yield active
         return
     try:
-        _enable(fxs, [False] * len(fxs))
+        master.set_info_value("I_FXEN", 0)
         yield active
     finally:
         if lost_call() is not None:
-            owe_on_reconnect(lambda: _enable(fxs, states))
+            owe_on_reconnect(lambda: master.set_info_value("I_FXEN", chain_on))
         else:
-            _enable(fxs, states)
+            master.set_info_value("I_FXEN", chain_on)
 
 
 def _span(start: float | None, end: float | None) -> tuple[float, float] | None:
@@ -186,6 +183,11 @@ def measure_track(*, track_index: int | str, start: float | None = None,
         if os.path.exists(tmp):
             os.unlink(tmp)
     notes = [clipped] if clipped else []
+    always = [t.name or f"track {i}" for i, t in enumerate(project.tracks)
+              if i != index and t.get_info_value("B_SOLO_DEFEAT") and not t.get_info_value("B_MUTE")]
+    if always:
+        notes.append("These tracks ignore solo (solo defeat), so they are heard in every "
+                     f"measurement, this one too: {always}")
     return {
         "success": True,
         "track_index": index,

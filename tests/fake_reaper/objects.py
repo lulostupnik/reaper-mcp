@@ -28,7 +28,8 @@ REAPER_PARAMS = ("Bypass", "Wet", "Delta")
 # REAPER's values for track settings a new track's info dict leaves out.
 TRACK_DEFAULTS = {"I_RECARM": 0.0, "I_RECINPUT": 0.0, "I_RECMON": 0.0, "I_RECMODE": 0.0,
                   "B_MAINSEND": 1.0, "I_FOLDERDEPTH": 0.0, "I_FREEMODE": 0.0,
-                  "I_NUMFIXEDLANES": 0.0, "I_AUTOMODE": 0.0}
+                  "I_NUMFIXEDLANES": 0.0, "I_AUTOMODE": 0.0, "I_FXEN": 1.0,
+                  "B_SOLO_DEFEAT": 0.0}
 
 # The plugins the fake REAPER has installed; anything else is "not found".
 INSTALLED_FX = {
@@ -139,9 +140,10 @@ class FakeFXParam(float):
 
 
 class FakeFX:
-    def __init__(self, state: FXState, index: int) -> None:
+    def __init__(self, state: FXState, index: int, reaper: FakeReaper | None = None) -> None:
         self._state = state
         self.index = index  # an instance attribute in reapy too
+        self._reaper = reaper
 
     @property
     def name(self) -> str:
@@ -161,6 +163,13 @@ class FakeFX:
 
     @is_enabled.setter
     def is_enabled(self, value: bool) -> None:
+        """reapy's TrackFX_SetEnabled: outside an undo block REAPER records its
+        own "FX bypass toggle" step and marks the project dirty (seen on 7.69)."""
+        reaper = self._reaper
+        if reaper is not None and not reaper.undo_depth and bool(value) != self._state.enabled:
+            reaper.undo_steps.append(("FX bypass toggle", reaper.snapshot()))
+            reaper.redo_steps.clear()
+            reaper.dirty = True
         self._state.enabled = value
 
     @property
@@ -261,7 +270,7 @@ class FakeTrack:
 
     @property
     def fxs(self) -> list[FakeFX]:
-        return [FakeFX(s, i) for i, s in enumerate(self._state.fxs)]
+        return [FakeFX(s, i, self._reaper) for i, s in enumerate(self._state.fxs)]
 
     @property
     def n_items(self) -> int:
@@ -277,7 +286,7 @@ class FakeTrack:
             raise ValueError(f"Can't find FX named {name}")
         state = FXState(name, [0.5] * len(INSTALLED_FX[name]))
         self._state.fxs.append(state)
-        return FakeFX(state, len(self._state.fxs) - 1)
+        return FakeFX(state, len(self._state.fxs) - 1, self._reaper)
 
     def add_midi_item(self, start=0, end=1, quantize=False) -> FakeItem:
         state = ItemState(self._reaper.new_pointer("MediaItem"), start, end - start, midi=True)
