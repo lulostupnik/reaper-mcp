@@ -1,6 +1,8 @@
 """Audio item tools against a running REAPER, read back through REAPER's own
 item and take info values."""
 
+import time
+
 import pytest
 
 pytestmark = pytest.mark.live
@@ -45,6 +47,7 @@ def test_start_recording_arms_the_track_and_stop_recording_reports_the_take(
     assert call("save_project", project_path=str(tmp_path / "rec.rpp"))["success"]
     assert call("set_track_input", track_index=0, input="mono", channel=1)["success"]
     result = call("start_recording", track_index=0)
+    time.sleep(1.0)  # stopped at once, REAPER sometimes keeps no take at all
     stopped = call("stop_recording") if result.get("success") else call("stop_transport")
     assert result["success"] is True, result
     assert live_project.tracks[0].get_info_value("I_RECARM") == 1
