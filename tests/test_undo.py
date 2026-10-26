@@ -62,6 +62,29 @@ def test_a_block_opened_inside_another_shares_its_hold(reaper, call):
     assert _steps(reaper) == ["MCP: outer"]
 
 
+@pytest.mark.parametrize(("tool", "arguments"), [
+    ("create_midi_item", {"start_position": 0.0, "length": 2.0}),
+    ("create_chord_progression", {"chords": "C,G", "start_position": 0.0}),
+    ("create_drum_pattern", {"pattern": "k.s.", "start_position": 0.0}),
+])
+def test_midi_tools_are_undo_steps(reaper, call, tool, arguments):
+    """REAPER's undo does not notice the MIDI API's changes on its own."""
+    reaper.add_track("Keys")
+    assert call(tool, track_index=0, **arguments)["success"] is True
+    assert len(_steps(reaper)) == 1
+    assert call("undo")["success"] is True
+    assert reaper.tracks[0].items == []
+
+
+def test_adding_a_midi_note_is_an_undo_step(reaper, call):
+    reaper.add_track("Keys")
+    call("create_midi_item", track_index=0, start_position=0.0, length=2.0)
+    call("add_midi_note", track_index=0, item_index=0, pitch=60, start=0.0, length=0.5)
+    assert len(_steps(reaper)) == 2
+    call("undo")
+    assert reaper.tracks[0].items[0].notes == []
+
+
 def test_a_read_only_tool_records_no_step(reaper, call):
     reaper.add_track("Vox")
     call("list_tracks")

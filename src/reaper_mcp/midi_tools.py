@@ -1,5 +1,5 @@
 
-from reaper_mcp.reaper import get_project
+from reaper_mcp.reaper import RPR, get_project
 from reaper_mcp.undo import edits
 
 # GM standard drum MIDI notes
@@ -40,6 +40,13 @@ NOTE_TO_NUMBER = {
 }
 
 
+def _changed(track, item) -> None:
+    """Tell REAPER's undo that the MIDI item changed: it does not notice new
+    MIDI items or notes made through the MIDI API, and would record no step
+    for the tool (seen on REAPER 7.69)."""
+    RPR.MarkTrackItemsDirty(track.id, item.id)
+
+
 def _parse_chord(chord_str: str):
     """Return (intervals_list, root_semitone) for a chord string like 'Cm7', 'G', 'F#maj7'."""
     chord_str = chord_str.strip()
@@ -60,6 +67,7 @@ def create_midi_item(*, track_index: int, start_position: float, length: float) 
     project = get_project()
     track = project.tracks[track_index]
     item = track.add_midi_item(start_position, start_position + length)
+    _changed(track, item)
     return {
         "success": True,
         "item_id": item.id,
@@ -99,6 +107,7 @@ def add_midi_note(
         velocity=velocity,
         channel=channel,
     )
+    _changed(track, item)
     return {
         "success": True,
         "track_index": track_index,
@@ -148,6 +157,7 @@ def create_chord_progression(
     for i, chord_str in enumerate(chord_list):
         _add_chord(take, chord_str, start=i * chord_length, length=chord_length)
         added_chords.append({"chord": chord_str, "position": i * chord_length, "length": chord_length})
+    _changed(track, item)
 
     return {
         "success": True,
@@ -197,6 +207,7 @@ def create_drum_pattern(
                     velocity=100,
                     channel=9,
                 )
+    _changed(track, item)
 
     return {
         "success": True,
