@@ -160,7 +160,9 @@ def _require_content(project) -> None:
 
 
 def transport_error() -> str | None:
-    """Why REAPER cannot render for analysis now, or None when it is stopped."""
+    """Why REAPER cannot render now, or None when it is stopped. Every render
+    refuses while REAPER plays or records: it would cut into the recording, and
+    render_stems' soloing would change what the user hears."""
     state = RPR.GetPlayState()
     if state & RECORDING:
         return "REAPER is recording; stop the recording first, then try again"
@@ -244,7 +246,7 @@ def render_project(
 ) -> dict:
     """
     Render the entire project to a file. An existing file is only replaced
-    with overwrite=true.
+    with overwrite=true. Refused while REAPER plays or records.
     format: wav, flac, mp3 (requires LAME), ogg.
     sample_rate: e.g. 44100, 48000, 96000.
     bit_depth: 16, 24, or 32 (WAV only; ignored for mp3/ogg/flac).
@@ -252,6 +254,8 @@ def render_project(
     """
     target = _target(output_path, format)
     _require_content(get_project())
+    if (error := transport_error()) is not None:
+        return {"success": False, "error": error}
     _render(target, format=format, sample_rate=sample_rate, bit_depth=bit_depth,
             channels=channels, bounds=ENTIRE_PROJECT, overwrite=overwrite)
     result = _rendered(target)
@@ -274,12 +278,14 @@ def render_time_selection(  # noqa: PLR0913 -- one argument per render setting
     overwrite: bool = False,
 ) -> dict:
     """Render a specific time range of the project to a file. An existing file
-    is only replaced with overwrite=true."""
+    is only replaced with overwrite=true. Refused while REAPER plays or records."""
     target = _target(output_path, format)
     if not 0 <= start < end:
         return {"success": False, "error": f"need 0 <= start < end; got start={start}, end={end}"}
     project = get_project()
     _require_content(project)
+    if (error := transport_error()) is not None:
+        return {"success": False, "error": error}
     selection = project.time_selection  # a reapy TimeSelection, not a tuple
     previous = (selection.start, selection.end)
     project.time_selection = (start, end)
@@ -308,12 +314,18 @@ def render_stems(
     Render each track as a separate stem file by soloing each track individually.
     track_indices: list of track indices, or null to render all tracks.
     Files are named after the track names in the output directory. Existing
-    files are only replaced with overwrite=true.
+    files are only replaced with overwrite=true. Refused while REAPER plays or records.
     """
     directory = Path(output_directory).expanduser().resolve()
     project = get_project()
     _require_content(project)
+    if (error := transport_error()) is not None:
+        return {"success": False, "error": error}
     indices = track_indices if track_indices is not None else list(range(project.n_tracks))
+    bad = [i for i in indices if not 0 <= i < project.n_tracks]
+    if bad:
+        return {"success": False, "error": f"No track {bad[0]}: there are {project.n_tracks} "
+                                           "(indices start at 0); nothing was rendered"}
     tracks = project.tracks
     names = _stem_names([tracks[i].name or f"Track_{i}" for i in indices])
     targets = [directory / f"{file_name}.{format.lower()}" for file_name in names]

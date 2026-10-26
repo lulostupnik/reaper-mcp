@@ -92,6 +92,11 @@ class TrackState:
     )
     selected: bool = False
     input_level: float = 0.0  # linear peak of what the track's input receives
+    # Successive meter readings (linear) instead of a steady input_level; the
+    # last one repeats. Each Track_GetPeakInfo of channel 1 moves to the next.
+    input_levels: list[float] = field(default_factory=list)
+    meter_reads: int = 0
+    hold_from: int = 0  # the first reading the peak hold covers (reset by clearing it)
 
     @property
     def guid(self) -> str:

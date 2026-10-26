@@ -182,7 +182,9 @@ def start_recording(
     already armed. disarm_others: disarm every other track, so nothing else is
     recorded by accident. position: start from here (seconds) instead of the edit
     cursor. save_first: save a never-saved project instead of refusing.
-    Warns about monitoring, auto-punch and repeat. Stop with stop_recording."""
+    Warns about monitoring, auto-punch and repeat. Stop with stop_recording.
+    Count-in (a bar of click before the take) cannot be switched from here: it is
+    REAPER's own setting (set_metronome reports it and says where to change it)."""
     tracks = get_project().tracks
     try:
         targets = _targets(tracks, track_index)

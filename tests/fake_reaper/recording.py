@@ -7,7 +7,8 @@ Modelled on REAPER's documentation and its Python binding (reaper_python.py):
   GetInputChannelName / kbd_getTextFromCmd decode a NULL result, which raises
   through reapy (see session._null_string_error).
 - Track_GetPeakInfo is linear (1.0 = 0 dB); Track_GetPeakHoldDB is in
-  hundredths of a dB. An armed track's meter shows its input.
+  hundredths of a dB and holds the loudest reading since it was cleared. An
+  armed track's meter shows its input (TrackState.input_levels varies it).
 - Transport: Record arms nothing by itself: armed tracks with an input and a
   record mode other than none record. "Transport: Stop (save all recorded
   media)" adds one item per such track, a file in the recording folder, and
@@ -218,17 +219,29 @@ class Recording:
 
     # Meters
 
-    def _meter(self: FakeReaper, track: str) -> float:
+    def _meter(self: FakeReaper, track: str, reading: int | None = None) -> float:
         state = self.track(track)
-        return state.input_level if self.audio_running and state.value("I_RECARM") else 0.0
+        if not (self.audio_running and state.value("I_RECARM")):
+            return 0.0
+        if not state.input_levels:
+            return state.input_level
+        levels = state.input_levels
+        return levels[min(state.meter_reads if reading is None else reading, len(levels) - 1)]
 
     def Track_GetPeakInfo(self: FakeReaper, track: str, channel: int) -> float:
-        return self._meter(track)
+        level = self._meter(track)
+        if channel == 1:
+            self.track(track).meter_reads += 1
+        return level
 
     def Track_GetPeakHoldDB(self: FakeReaper, track: str, channel: int, clear: bool) -> float:
+        """The loudest reading since the hold was last cleared."""
+        state = self.track(track)
         if clear:
             self.peak_hold_clears += 1
-        level = self._meter(track)
+            state.hold_from = state.meter_reads
+        last = max(state.hold_from, state.meter_reads - 1)
+        level = max(self._meter(track, i) for i in range(state.hold_from, last + 1))
         return max(-150.0, 20 * np.log10(level)) / 100 if level > 0 else -1.5
 
 

@@ -371,7 +371,7 @@
     }
   },
   "check_input_level": {
-    "description": "Listen to an armed track's input for a few seconds (0.5 to 10) and say whether\nthe level is right to record: \"no signal\" (with things to check), \"too quiet\",\n\"good\" or \"clipping\". Play or sing as loud as you will in the take while it\nlistens. Reports the peak level in dBFS (aim for about -12). Never starts recording.\ntrack_index: the track to check; by default the only armed track.",
+    "description": "Listen to an armed track's input for a few seconds (0.5 to 10) and say whether\nthe level is right to record: \"no signal\" (with things to check), \"too quiet\",\n\"good\" or \"clipping\". Play or sing as loud as you will in the take while it\nlistens. Reports the peak level in dBFS (aim for about -12) and the average\nlevel: an average far below the peak means the peak was a short loud moment,\nsuch as one bump or plosive, and the rest was quieter. Never starts recording.\ntrack_index: the track to check; by default the only armed track.",
     "input_schema": {
       "properties": {
         "seconds": {
@@ -2252,7 +2252,7 @@
     }
   },
   "render_project": {
-    "description": "Render the entire project to a file. An existing file is only replaced\nwith overwrite=true.\nformat: wav, flac, mp3 (requires LAME), ogg.\nsample_rate: e.g. 44100, 48000, 96000.\nbit_depth: 16, 24, or 32 (WAV only; ignored for mp3/ogg/flac).\nchannels: 1 (mono) or 2 (stereo).",
+    "description": "Render the entire project to a file. An existing file is only replaced\nwith overwrite=true. Refused while REAPER plays or records.\nformat: wav, flac, mp3 (requires LAME), ogg.\nsample_rate: e.g. 44100, 48000, 96000.\nbit_depth: 16, 24, or 32 (WAV only; ignored for mp3/ogg/flac).\nchannels: 1 (mono) or 2 (stereo).",
     "input_schema": {
       "properties": {
         "bit_depth": {
@@ -2293,7 +2293,7 @@
     }
   },
   "render_regions": {
-    "description": "Render each region of the project to its own file, using the project's\nrender settings.\npattern: file name pattern; $region, $regionnumber, $project are available,\n    and it may name subdirectories. REAPER numbers names that would clash\n    (\"take-001\", \"take-002\").\nselected_only: render only the regions selected in REAPER; with none\n    selected, REAPER renders all of them.\ndry_run: return the project's regions and the files REAPER would write,\n    without rendering. It sets the render settings and restores them.\nFails without rendering if any output file already exists; never deletes files.\nBlocks until every file is written; status is then \"complete\". Gives up\nwith \"stalled\" once the files stop growing for stall_timeout_seconds\n(longer while REAPER holds a scratch file), or \"timeout\" after\ntimeout_seconds in total.\nRegions are reported by the number REAPER shows on them and their name,\nas in get_project_info and list_markers.",
+    "description": "Render each region of the project to its own file, using the project's\nrender settings.\npattern: file name pattern; $region, $regionnumber, $project are available,\n    and it may name subdirectories. REAPER numbers names that would clash\n    (\"take-001\", \"take-002\").\nselected_only: render only the regions selected in REAPER; with none\n    selected, REAPER renders all of them.\ndry_run: return the project's regions and the files REAPER would write,\n    without rendering. It sets the render settings and restores them.\nFails without rendering if any output file already exists, or while REAPER\nplays or records; never deletes files.\nBlocks until every file is written; status is then \"complete\". Gives up\nwith \"stalled\" once the files stop growing for stall_timeout_seconds\n(longer while REAPER holds a scratch file), or \"timeout\" after\ntimeout_seconds in total.\nRegions are reported by the number REAPER shows on them and their name,\nas in get_project_info and list_markers.",
     "input_schema": {
       "properties": {
         "dry_run": {
@@ -2334,7 +2334,7 @@
     }
   },
   "render_stems": {
-    "description": "Render each track as a separate stem file by soloing each track individually.\ntrack_indices: list of track indices, or null to render all tracks.\nFiles are named after the track names in the output directory. Existing\nfiles are only replaced with overwrite=true.",
+    "description": "Render each track as a separate stem file by soloing each track individually.\ntrack_indices: list of track indices, or null to render all tracks.\nFiles are named after the track names in the output directory. Existing\nfiles are only replaced with overwrite=true. Refused while REAPER plays or records.",
     "input_schema": {
       "properties": {
         "bit_depth": {
@@ -2385,7 +2385,7 @@
     }
   },
   "render_time_selection": {
-    "description": "Render a specific time range of the project to a file. An existing file\nis only replaced with overwrite=true.",
+    "description": "Render a specific time range of the project to a file. An existing file\nis only replaced with overwrite=true. Refused while REAPER plays or records.",
     "input_schema": {
       "properties": {
         "bit_depth": {
@@ -3240,7 +3240,7 @@
     }
   },
   "start_recording": {
-    "description": "Start recording, after checking it can work: not already recording, audio\nrunning, the project saved (so takes are stored next to it), and each track\nthat will record has an input and a record mode that records. Playback is\nstopped first, so the take starts at position.\ntrack_index: the track to record on (armed here); by default the tracks\nalready armed. disarm_others: disarm every other track, so nothing else is\nrecorded by accident. position: start from here (seconds) instead of the edit\ncursor. save_first: save a never-saved project instead of refusing.\nWarns about monitoring, auto-punch and repeat. Stop with stop_recording.",
+    "description": "Start recording, after checking it can work: not already recording, audio\nrunning, the project saved (so takes are stored next to it), and each track\nthat will record has an input and a record mode that records. Playback is\nstopped first, so the take starts at position.\ntrack_index: the track to record on (armed here); by default the tracks\nalready armed. disarm_others: disarm every other track, so nothing else is\nrecorded by accident. position: start from here (seconds) instead of the edit\ncursor. save_first: save a never-saved project instead of refusing.\nWarns about monitoring, auto-punch and repeat. Stop with stop_recording.\nCount-in (a bar of click before the take) cannot be switched from here: it is\nREAPER's own setting (set_metronome reports it and says where to change it).",
     "input_schema": {
       "properties": {
         "disarm_others": {

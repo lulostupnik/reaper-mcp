@@ -61,7 +61,11 @@ class FX:
         return [True, track, fx, param, value, display(state.plugin, param, value), size]
 
     def TrackFX_Delete(self: FakeReaper, track: str, fx_index: int) -> bool:
-        del self.track(track).fxs[fx_index]
+        """False for an FX that is not there (-1 included); nothing is removed."""
+        fxs = self.track(track).fxs
+        if not 0 <= fx_index < len(fxs):
+            return False
+        del fxs[fx_index]
         return True
 
     def TrackFX_AddByName(self: FakeReaper, track, name, record_fx, instantiate) -> int:

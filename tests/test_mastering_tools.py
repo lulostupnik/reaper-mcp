@@ -75,7 +75,8 @@ def test_set_master_fx_parameter(reaper, call):
 def test_set_master_fx_parameter_fx_out_of_range(reaper, call):
     reaper.master.fxs.append(FXState("ReaEQ", [0.5, 0.5, 0.5]))
     result = call("set_master_fx_parameter", fx_index=1, param_index=0, value=0.9)
-    assert result == {"success": False, "error": "list index out of range"}
+    assert result == {"success": False, "error": "There is no FX 1 on that track: it has 1 "
+                                                 "(numbered from 0; list_master_fx lists them)"}
 
 
 def test_set_master_fx_parameter_param_out_of_range(reaper, call):

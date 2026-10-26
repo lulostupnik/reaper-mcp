@@ -75,8 +75,13 @@ def remove_fx(*, track_index: int | str, fx_index: int) -> dict:
     track_index: the track's index, or its GUID from list_tracks (safer: a GUID
     still names the same track after tracks were added, deleted or moved)."""
     track_index, track = resolve_track_index(get_project(), track_index)
+    error = fx_index_error(track, fx_index)
+    if error:
+        return error
     fx_name = track.fxs[fx_index].name
-    RPR.TrackFX_Delete(track.id, fx_index)
+    count = track.n_fxs
+    if not RPR.TrackFX_Delete(track.id, fx_index) or track.n_fxs != count - 1:
+        return {"success": False, "error": f"REAPER did not remove FX {fx_index} ({fx_name})"}
     return {"success": True, "track_index": track_index, "removed": fx_name}
 
 
@@ -90,6 +95,9 @@ def set_fx_parameter(
     Use get_fx_parameters to discover available parameters and their indices.
     """
     track = get_project().tracks[track_index]
+    error = fx_index_error(track, fx_index)
+    if error:
+        return error
     param = set_param_normalized(track, fx_index, param_index, value=value)
     return {
         "success": True,
@@ -119,13 +127,13 @@ def find_param(fx, name: str) -> int:
     raise LookupError(f"{fx.name} has no parameter '{name}'. Its parameters: {names}")
 
 
-def fx_index_error(track, fx_index: int) -> dict | None:
+def fx_index_error(track, fx_index: int, *, lister: str = "list_track_fx") -> dict | None:
     """A failure result when track has no FX fx_index (a negative index too:
     REAPER takes -1 as no FX, where Python would count from the end)."""
     if 0 <= fx_index < track.n_fxs:
         return None
     return {"success": False, "error": f"There is no FX {fx_index} on that track: it has "
-                                       f"{track.n_fxs} (numbered from 0; list_track_fx lists them)"}
+                                       f"{track.n_fxs} (numbered from 0; {lister} lists them)"}
 
 
 def _target_normalized(track, fx_index: int, param_index: int, *, value: str) -> float:
@@ -201,7 +209,11 @@ def set_fx_parameter_by_name(
 @read_only
 def get_fx_parameters(*, track_index: int, fx_index: int) -> dict:
     """Get all parameters for an FX plugin, including names, indices, and current values."""
-    fx = get_project().tracks[track_index].fxs[fx_index]
+    track = get_project().tracks[track_index]
+    error = fx_index_error(track, fx_index)
+    if error:
+        return error
+    fx = track.fxs[fx_index]
     params = [
         {
             "index": i,
@@ -236,6 +248,9 @@ def list_track_fx(*, track_index: int) -> dict:
 def bypass_fx(*, track_index: int, fx_index: int, bypassed: bool) -> dict:
     """Enable or bypass (disable) an FX plugin on a track."""
     track = get_project().tracks[track_index]
+    error = fx_index_error(track, fx_index)
+    if error:
+        return error
     fx = track.fxs[fx_index]
     fx.is_enabled = not bypassed
     return {

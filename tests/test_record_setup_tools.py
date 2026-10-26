@@ -352,3 +352,17 @@ def test_check_input_level_without_audio(reaper, call):
     reaper.audio_running = False
     result = call("check_input_level")
     assert result["success"] is False and result["error"].startswith("Audio is not running")
+
+
+def test_check_input_level_reports_an_average_below_a_single_spike(reaper, call):
+    track = _armed(reaper, 0.0)
+    track.input_levels = [0.1] * 10 + [1.0] + [0.1] * 30  # -20 dBFS, one spike to 0 dBFS
+    result = call("check_input_level", seconds=1.0)
+    assert result["peak_dbfs"] == pytest.approx(0.0, abs=0.1)
+    assert -20.0 < result["average_dbfs"] < -14.0
+
+
+def test_check_input_level_average_of_a_steady_input_is_its_level(reaper, call):
+    _armed(reaper, 0.25)
+    result = call("check_input_level", seconds=1.0)
+    assert result["average_dbfs"] == pytest.approx(result["peak_dbfs"], abs=0.1)

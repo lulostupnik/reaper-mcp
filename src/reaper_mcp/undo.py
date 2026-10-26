@@ -23,6 +23,7 @@ from typing import Any
 
 from mcp.types import ToolAnnotations
 
+from reaper_mcp.guids import TRACK_HINT, pointer_guid, resolve_indexed
 from reaper_mcp.reaper import (
     RPR,
     OutcomeUncertain,
@@ -179,21 +180,31 @@ def step_description(fn: Callable, kwargs: dict) -> str:
     return f"{step_name(fn)} ({args})"
 
 
+def _track_refs(kwargs: dict) -> list[int | str]:
+    """The track indices and GUID strings in kwargs (None and other values are left out)."""
+    refs = [kwargs[key] for key in TRACK_INDEX_ARGS if key in kwargs]
+    for key in TRACK_INDEX_LISTS:
+        refs.extend(kwargs.get(key) or [])
+    return [r for r in refs if isinstance(r, str) or (isinstance(r, int) and not isinstance(r, bool))]
+
+
 def _bad_track_index(kwargs: dict) -> str | None:
-    """An error for a track index in kwargs that names no track, or None.
+    """An error for a track index or GUID in kwargs that names no track, or None.
     Checked before the undo block opens, so a call that cannot do anything
     leaves no empty step in the history (and does not clear redo)."""
-    indices = [kwargs[key] for key in TRACK_INDEX_ARGS if key in kwargs]
-    for key in TRACK_INDEX_LISTS:
-        indices.extend(kwargs.get(key) or [])
-    indices = [i for i in indices if isinstance(i, int) and not isinstance(i, bool)]
-    if not indices:
+    refs = _track_refs(kwargs)
+    if not refs:
         return None
     ensure_connected()
     count = RPR.CountTracks(0)
-    for index in indices:
-        if not 0 <= index < count:
-            return f"No track {index}: there are {count} (indices start at 0); nothing was changed"
+    # Track pointers are only fetched (one call each) when a GUID must be looked up.
+    guids = any(isinstance(r, str) and not r.strip().isdigit() for r in refs)
+    tracks = [RPR.GetTrack(0, i) for i in range(count)] if guids else range(count)
+    for ref in refs:
+        try:
+            resolve_indexed(tracks, ref, pointer_guid, noun="track", hint=TRACK_HINT)
+        except LookupError as e:
+            return f"{e}; nothing was changed"
     return None
 
 

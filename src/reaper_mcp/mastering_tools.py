@@ -1,6 +1,6 @@
 import os
 
-from reaper_mcp.fx_tools import add_plugin, set_param_normalized
+from reaper_mcp.fx_tools import add_plugin, fx_index_error, set_param_normalized
 from reaper_mcp.fx_values import set_to_display
 from reaper_mcp.reaper import get_project
 from reaper_mcp.undo import edits, read_only
@@ -46,7 +46,11 @@ def list_master_fx() -> dict:
 @edits(idempotent=True)
 def set_master_fx_parameter(*, fx_index: int, param_index: int, value: float) -> dict:
     """Set a normalized parameter (0.0–1.0) on a master track FX plugin."""
-    param = set_param_normalized(get_project().master_track, fx_index, param_index, value=value)
+    master = get_project().master_track
+    error = fx_index_error(master, fx_index, lister="list_master_fx")
+    if error:
+        return error
+    param = set_param_normalized(master, fx_index, param_index, value=value)
     return {
         "success": True,
         "fx_index": fx_index,
