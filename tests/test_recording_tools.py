@@ -331,7 +331,7 @@ def test_file_peak_db_of_a_missing_file():
 def test_set_recording_format(reaper, call, arguments, config, bit_depth):
     result = call("set_recording_format", **arguments)
     assert result == {"success": True, "format": arguments.get("format", "wav"),
-                      "bit_depth": bit_depth}
+                      "bit_depth": bit_depth, "previous": None}
     # REAPER stores its whole sink config, so it reads back longer than written.
     stored = base64.b64decode(reaper.project_info["RECORD_FORMAT"])
     assert stored.startswith(config) and len(stored) > len(config)
@@ -356,10 +356,13 @@ def test_set_recording_format_refusals(reaper, call, arguments, message):
     assert "RECORD_FORMAT" not in reaper.project_info
 
 
-def test_set_recording_format_is_undoable(reaper, call):
-    call("set_recording_format", bit_depth=16)
-    call("undo")
-    assert "RECORD_FORMAT" not in reaper.project_info
+def test_set_recording_format_is_not_an_undo_step_and_names_the_previous_one(reaper, call):
+    """REAPER keeps the recording format out of its undo history."""
+    assert call("set_recording_format", bit_depth=16)["previous"] is None
+    assert reaper.undo_steps == []
+    assert call("set_recording_format", format="flac")["previous"] == {
+        "format": "wav", "bit_depth": 16}
+    assert call("set_recording_format")["previous"] == {"format": "flac", "bit_depth": None}
 
 
 def test_recordings_use_the_recording_format(reaper, call, saved):
@@ -377,7 +380,7 @@ def test_recordings_use_the_recording_format(reaper, call, saved):
 def test_set_record_path_relative(reaper, call, saved):
     result = call("set_record_path", subfolder="Audio/")
     assert result == {"success": True, "record_path_setting": "Audio",
-                      "record_path": str(saved / "Audio")}
+                      "record_path": str(saved / "Audio"), "previous_record_path_setting": ""}
 
 
 @pytest.mark.parametrize("subfolder", ["/tmp/takes", "~/takes", "../elsewhere", "Audio/../../x",
@@ -393,10 +396,11 @@ def test_set_record_path_empty_records_next_to_the_project(reaper, call, saved):
     assert call("set_record_path", subfolder="")["record_path"] == str(saved)
 
 
-def test_set_record_path_is_undoable(reaper, call, saved):
-    call("set_record_path", subfolder="Audio")
-    call("undo")
-    assert "RECORD_PATH" not in reaper.project_info
+def test_set_record_path_is_not_an_undo_step_and_names_the_previous_one(reaper, call, saved):
+    """REAPER keeps the recording folder out of its undo history."""
+    assert call("set_record_path", subfolder="Audio")["previous_record_path_setting"] == ""
+    assert reaper.undo_steps == []
+    assert call("set_record_path", subfolder="")["previous_record_path_setting"] == "Audio"
 
 
 def test_start_recording_bad_track_is_not_an_undo_step(reaper, call, saved):

@@ -20,7 +20,7 @@ from reaper_mcp.record_setup_tools import DEVICE_GUIDANCE, MONITORING_WARNING, s
 from reaper_mcp.render_tools import _format_config, get_project_string, set_project_string
 from reaper_mcp.track_tools import record_state
 from reaper_mcp.transport_tools import QUERY_REPEAT, count_in_state, punch_mode
-from reaper_mcp.undo import edits, no_undo, undo_block
+from reaper_mcp.undo import no_undo, undo_block
 from reaper_mcp.units import linear_to_db
 
 PLAYING, PAUSED, RECORDING = 1, 2, 4  # GetPlayState bits
@@ -319,12 +319,18 @@ def _sink(config: str) -> tuple[bytes, int | None]:
     return raw[:4], (raw[4] if raw[:4] == b"evaw" and len(raw) > 4 else None)
 
 
-@edits(idempotent=True)
+# REAPER keeps the recording format and folder out of its undo history (seen
+# on 7.69: an undo block changing only them records nothing, and undo leaves
+# them as they are), so these two tools are not undo steps; their replies
+# name the previous setting, to set it back with the same tool.
+@no_undo(idempotent=True)
 def set_recording_format(*, format: str = "wav", bit_depth: int = 24) -> dict:
     """The file format new recordings are written in. REAPER's default (WAV,
     24-bit) is already right for most recording; change it only if asked.
     format: "wav" or "flac" (lossless and smaller; REAPER's default FLAC settings).
-    bit_depth (WAV only): 24 (recommended), 16, or 32 (32-bit float)."""
+    bit_depth (WAV only): 24 (recommended), 16, or 32 (32-bit float).
+    Not undoable (REAPER keeps it out of the undo history): to go back, call
+    this again with the previous format the reply names."""
     if format.lower() not in RECORD_FORMATS:
         return {"success": False, "error": f"format must be one of {RECORD_FORMATS}, "
                                            f"not {format!r}"}
@@ -332,11 +338,24 @@ def set_recording_format(*, format: str = "wav", bit_depth: int = 24) -> dict:
         config = _format_config(format, bit_depth)
     except ValueError as e:
         return {"success": False, "error": str(e)}
+    previous = _describe_format(get_project_string("RECORD_FORMAT"))
     set_project_string("RECORD_FORMAT", config)
     if _sink(get_project_string("RECORD_FORMAT")) != _sink(config):
         return {"success": False, "error": "REAPER did not take the recording format"}
     return {"success": True, "format": format.lower(),
-            "bit_depth": bit_depth if format.lower() == "wav" else None}
+            "bit_depth": bit_depth if format.lower() == "wav" else None,
+            "previous": previous}
+
+
+def _describe_format(config: str | None) -> dict | None:
+    """{"format", "bit_depth"} of a RECORD_FORMAT config, or None if it is
+    neither WAV nor FLAC (or unset)."""
+    sink, bits = _sink(config or "")
+    if sink == b"evaw":
+        return {"format": "wav", "bit_depth": bits}
+    if sink == b"calf":
+        return {"format": "flac", "bit_depth": None}
+    return None
 
 
 def _subfolder_error(subfolder: str) -> str | None:
@@ -348,18 +367,21 @@ def _subfolder_error(subfolder: str) -> str | None:
     return None
 
 
-@edits(idempotent=True)
+@no_undo(idempotent=True)
 def set_record_path(*, subfolder: str) -> dict:
     """The subfolder of the project's folder new recordings go into, e.g. "Audio";
     "" records next to the project file (REAPER's default, usually fine). Only
-    folders inside the project's folder are accepted, so the takes move with it."""
+    folders inside the project's folder are accepted, so the takes move with it.
+    Not undoable (REAPER keeps it out of the undo history): to go back, call
+    this again with the previous setting the reply names."""
     error = _subfolder_error(subfolder.strip())
     if error:
         return {"success": False, "error": error}
     setting = subfolder.strip().rstrip("/")
+    previous = get_project_string("RECORD_PATH") or ""
     set_project_string("RECORD_PATH", setting)
     return {"success": True, "record_path_setting": get_project_string("RECORD_PATH"),
-            "record_path": record_path()}
+            "record_path": record_path(), "previous_record_path_setting": previous}
 
 
 TOOLS = (

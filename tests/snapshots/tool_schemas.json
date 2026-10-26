@@ -1445,7 +1445,7 @@
     }
   },
   "set_record_path": {
-    "description": "The subfolder of the project's folder new recordings go into, e.g. \"Audio\";\n\"\" records next to the project file (REAPER's default, usually fine). Only\nfolders inside the project's folder are accepted, so the takes move with it.",
+    "description": "The subfolder of the project's folder new recordings go into, e.g. \"Audio\";\n\"\" records next to the project file (REAPER's default, usually fine). Only\nfolders inside the project's folder are accepted, so the takes move with it.\nNot undoable (REAPER keeps it out of the undo history): to go back, call\nthis again with the previous setting the reply names.",
     "input_schema": {
       "properties": {
         "subfolder": {
@@ -1461,7 +1461,7 @@
     }
   },
   "set_recording_format": {
-    "description": "The file format new recordings are written in. REAPER's default (WAV,\n24-bit) is already right for most recording; change it only if asked.\nformat: \"wav\" or \"flac\" (lossless and smaller; REAPER's default FLAC settings).\nbit_depth (WAV only): 24 (recommended), 16, or 32 (32-bit float).",
+    "description": "The file format new recordings are written in. REAPER's default (WAV,\n24-bit) is already right for most recording; change it only if asked.\nformat: \"wav\" or \"flac\" (lossless and smaller; REAPER's default FLAC settings).\nbit_depth (WAV only): 24 (recommended), 16, or 32 (32-bit float).\nNot undoable (REAPER keeps it out of the undo history): to go back, call\nthis again with the previous format the reply names.",
     "input_schema": {
       "properties": {
         "bit_depth": {

@@ -29,6 +29,9 @@ if TYPE_CHECKING:
 # The project state an undo step restores.
 UNDO_STATE = ("tracks", "master", "markers", "regions", "tempo_markers", "bpm",
               "time_signature", "envelopes", "project_info")
+# Project settings REAPER keeps out of its undo history (seen on 7.69): a
+# block changing only these records nothing, and undo leaves them as they are.
+NOT_UNDONE_INFO = ("RECORD_PATH", "RECORD_FORMAT")
 PLAY_STATE = {"stopped": 0, "playing": 1, "paused": 2, "recording": 5}
 NULL_TRACK = "(MediaTrack*)0x0000000000000000"
 
@@ -44,7 +47,8 @@ def _noticed(state: dict) -> dict:
     all but MIDI items, which change through the MIDI API."""
     tracks = [dataclasses.replace(t, items=[i for i in t.items if not i.midi])
               for t in state["tracks"]]
-    return {**state, "tracks": tracks}
+    info = {k: v for k, v in state["project_info"].items() if k not in NOT_UNDONE_INFO}
+    return {**state, "tracks": tracks, "project_info": info}
 
 
 class Session:
@@ -74,8 +78,12 @@ class Session:
         return {name: copy.deepcopy(getattr(self, name)) for name in UNDO_STATE}
 
     def restore(self: FakeReaper, state: dict) -> None:
+        kept = {key: self.project_info[key] for key in NOT_UNDONE_INFO if key in self.project_info}
         for name, value in state.items():
             setattr(self, name, copy.deepcopy(value))
+        for key in NOT_UNDONE_INFO:
+            self.project_info.pop(key, None)
+        self.project_info.update(kept)
 
     # Undo
 
