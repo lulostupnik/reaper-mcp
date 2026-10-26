@@ -97,7 +97,7 @@ reaper-mcp-server          # start the server
 reaper-mcp-server --debug  # with debug logging
 ```
 
-## Tools (66)
+## Tools (83)
 
 ### Context and Undo
 `get_context` `get_project_summary` `undo` `redo` `get_undo_state`
@@ -106,6 +106,14 @@ Every tool that changes the project is one named REAPER undo step ("MCP: Set tra
 
 ### Project Management
 `create_project` `load_project` `save_project` `get_project_info` `set_tempo` `set_time_signature` `set_cursor_position` `play_project` `stop_transport`
+
+### Recording
+`get_audio_setup` `set_track_input` `arm_track` `set_monitoring` `set_track_record_mode` `check_input_level` `start_recording` `stop_recording` `set_metronome` `set_recording_format` `set_record_path` `set_time_selection` `set_loop` `set_punch_mode`
+
+`get_audio_setup` shows the interface REAPER uses (the device itself can only be changed in REAPER's preferences; the reply says where). `check_input_level` listens to an armed track for a few seconds and says "no signal" (with things to check: cable, 48V, INST, gain), "too quiet", "good" or "clipping", without recording. `start_recording` refuses until it can work (audio running, project saved or `save_first=true`, an input and a recording record mode on each track, not already recording), disarms other tracks by default, stops playback and can start from a position, warns about monitoring, auto-punch and repeat, and confirms REAPER is recording. Count-in is only reported; it is turned on in REAPER itself (right-click the metronome button). `stop_recording` keeps the take without REAPER's save/delete dialog and lists each new take's file, length and peak level. REAPER actions are run only after REAPER confirms the action's name (the core transport and metronome actions also run under a translated name, so stopping never refuses).
+
+### Project Templates
+`list_project_templates` `new_project_from_template` `save_project_template` `save_track_template`
 
 ### Tracks
 `create_track` `delete_track` `rename_track` `list_tracks` `get_track_info` `set_track_color` `create_bus` `create_send` `remove_send` `list_sends`
@@ -122,7 +130,7 @@ Inserts saved `.RTrackTemplate` files from REAPER's TrackTemplates folder (subfo
 `add_fx` `remove_fx` `bypass_fx` `list_track_fx` `get_fx_parameters` `set_fx_parameter` `load_fx_preset` `add_master_fx` `list_master_fx` `set_master_fx_parameter`
 
 ### Audio
-`import_audio_file` `edit_audio_item` `start_recording` `adjust_pitch` `adjust_playback_rate`
+`import_audio_file` `edit_audio_item` `adjust_pitch` `adjust_playback_rate`
 
 ### Mixing
 `set_track_volume` `set_track_pan` `set_track_mute` `set_track_solo` `set_send_volume` `set_master_volume` `add_volume_automation` `add_pan_automation`

@@ -15,6 +15,7 @@ from reaper_mcp.project_tools import (
 )
 from reaper_mcp.reaper import RPR, Pointer, get_project, is_null
 from reaper_mcp.track_tools import mix_state, record_state
+from reaper_mcp.transport_tools import count_in_state, metronome_state, punch_mode, time_range
 from reaper_mcp.undo import read_only
 
 # GetPlayState bits.
@@ -30,14 +31,6 @@ def _play_state(bits: int) -> str:
     if bits & PAUSED:
         return "paused"
     return "playing" if bits & PLAYING else "stopped"
-
-
-def _range(*, loop: bool) -> dict | None:
-    """The time selection, or the loop range with loop=True; None when empty."""
-    # (project, is_set, is_loop, start, end, allow_autoseek) per REAPER's Python binding.
-    result = RPR.GetSet_LoopTimeRange2(0, False, loop, 0.0, 0.0, False)
-    start, end = result[3], result[4]
-    return {"start": start, "end": end} if end > start else None
 
 
 def _track_ref(project, pointer: Pointer) -> dict:
@@ -96,7 +89,8 @@ def _last_touched_fx() -> dict | None:
 def get_context() -> dict:
     """What is happening in REAPER right now: play state, edit cursor and play
     position (seconds), time selection and loop range (null when empty), whether
-    repeat is on, the selected tracks and items (with GUIDs), the FX touched last,
+    repeat is on, REAPER's punch mode, metronome and count-in (null if unknown),
+    the selected tracks and items (with GUIDs), the FX touched last,
     whether the project has unsaved changes, and the project file ("" if never saved)."""
     project = get_project()
     return {
@@ -104,9 +98,12 @@ def get_context() -> dict:
         "play_state": _play_state(RPR.GetPlayState()),
         "edit_cursor": RPR.GetCursorPosition(),
         "play_position": RPR.GetPlayPosition(),
-        "time_selection": _range(loop=False),
-        "loop_range": _range(loop=True),
+        "time_selection": time_range(loop=False),
+        "loop_range": time_range(loop=True),
         "repeat": bool(RPR.GetSetRepeat(-1)),
+        "punch_mode": punch_mode(),
+        "metronome": metronome_state(),
+        "count_in": count_in_state(),
         "selected_tracks": _selected_tracks(project),
         "selected_items": _selected_items(),
         "last_touched_fx": _last_touched_fx(),

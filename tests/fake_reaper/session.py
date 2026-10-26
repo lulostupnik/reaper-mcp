@@ -45,6 +45,8 @@ class Session:
         self.project_file = ""
         self.repeat = False
         self.loop_range = (0.0, 0.0)
+        # REAPER's default "Loop points linked to time selection": setting one sets both.
+        self.loop_linked = True
         self.play_position = 0.0
         # (track number as GetLastTouchedFX packs it, fx number, param), or None.
         self.last_touched_fx: tuple[int, int, int] | None = None
@@ -128,6 +130,8 @@ class Session:
     def GetSet_LoopTimeRange2(self: FakeReaper, project, is_set, is_loop, start, end, seek):
         if is_set:
             setattr(self, "loop_range" if is_loop else "time_selection", (start, end))
+            if self.loop_linked:
+                setattr(self, "time_selection" if is_loop else "loop_range", (start, end))
         start, end = self.loop_range if is_loop else self.time_selection
         return [project, is_set, is_loop, start, end, seek]
 

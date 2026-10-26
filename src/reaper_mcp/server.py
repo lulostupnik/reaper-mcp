@@ -16,11 +16,15 @@ from reaper_mcp import (
     mastering_tools,
     midi_tools,
     mixing_tools,
+    project_template_tools,
     project_tools,
+    record_setup_tools,
+    recording_tools,
     region_render,
     render_tools,
     template_tools,
     track_tools,
+    transport_tools,
     undo_tools,
 )
 from reaper_mcp.undo import as_undo_step, kind_of
@@ -72,6 +76,9 @@ for _module in (
     undo_tools,
     project_tools,
     track_tools,
+    record_setup_tools,
+    recording_tools,
+    transport_tools,
     midi_tools,
     fx_tools,
     audio_tools,
@@ -81,6 +88,7 @@ for _module in (
     mastering_tools,
     analysis_tools,
     template_tools,
+    project_template_tools,
 ):
     for _tool in _module.TOOLS:
         # cleandoc: the SDK sends the docstring verbatim, source indentation included.

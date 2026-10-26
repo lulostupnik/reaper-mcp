@@ -259,6 +259,32 @@
       "type": "object"
     }
   },
+  "arm_track": {
+    "description": "Arm (or disarm) a track for recording. Arming does not start recording.\nexclusive: also disarm every other track, so only this one records.",
+    "input_schema": {
+      "properties": {
+        "armed": {
+          "default": true,
+          "title": "Armed",
+          "type": "boolean"
+        },
+        "exclusive": {
+          "default": false,
+          "title": "Exclusive",
+          "type": "boolean"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index"
+      ],
+      "title": "arm_trackArguments",
+      "type": "object"
+    }
+  },
   "bypass_fx": {
     "description": "Enable or bypass (disable) an FX plugin on a track.",
     "input_schema": {
@@ -282,6 +308,32 @@
         "bypassed"
       ],
       "title": "bypass_fxArguments",
+      "type": "object"
+    }
+  },
+  "check_input_level": {
+    "description": "Listen to an armed track's input for a few seconds (0.5 to 10) and say whether\nthe level is right to record: \"no signal\" (with things to check), \"too quiet\",\n\"good\" or \"clipping\". Play or sing as loud as you will in the take while it\nlistens. Reports the peak level in dBFS (aim for about -12). Never starts recording.\ntrack_index: the track to check; by default the only armed track.",
+    "input_schema": {
+      "properties": {
+        "seconds": {
+          "default": 3.0,
+          "title": "Seconds",
+          "type": "number"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
+        }
+      },
+      "title": "check_input_levelArguments",
       "type": "object"
     }
   },
@@ -564,8 +616,16 @@
       "type": "object"
     }
   },
+  "get_audio_setup": {
+    "description": "The audio interface REAPER is using: audio system (JACK, ALSA...), input\nand output device, sample rate, block size, sample format (bits), whether audio is\nrunning, the input and output channels (numbered from 1, with names) and the\ninput/output latency in samples and milliseconds. The device cannot be\nchanged through the API: how_to_change says where to change it in REAPER.",
+    "input_schema": {
+      "properties": {},
+      "title": "get_audio_setupArguments",
+      "type": "object"
+    }
+  },
   "get_context": {
-    "description": "What is happening in REAPER right now: play state, edit cursor and play\nposition (seconds), time selection and loop range (null when empty), whether\nrepeat is on, the selected tracks and items (with GUIDs), the FX touched last,\nwhether the project has unsaved changes, and the project file (\"\" if never saved).",
+    "description": "What is happening in REAPER right now: play state, edit cursor and play\nposition (seconds), time selection and loop range (null when empty), whether\nrepeat is on, REAPER's punch mode, metronome and count-in (null if unknown),\nthe selected tracks and items (with GUIDs), the FX touched last,\nwhether the project has unsaved changes, and the project file (\"\" if never saved).",
     "input_schema": {
       "properties": {},
       "title": "get_contextArguments",
@@ -610,7 +670,7 @@
     }
   },
   "get_track_info": {
-    "description": "Get detailed information about a track including FX and items.",
+    "description": "Get detailed information about a track including FX, items and its\nrecording setup (armed, record input, monitoring, record mode).",
     "input_schema": {
       "properties": {
         "track_index": {
@@ -695,6 +755,14 @@
       "type": "object"
     }
   },
+  "list_project_templates": {
+    "description": "List the project templates (.RPP files in REAPER's ProjectTemplates folder,\nsubfolders included) that new_project_from_template can start from.",
+    "input_schema": {
+      "properties": {},
+      "title": "list_project_templatesArguments",
+      "type": "object"
+    }
+  },
   "list_sends": {
     "description": "List all sends from a track: the destination track (index, GUID, name),\nvolume in dB, pan and mute.",
     "input_schema": {
@@ -736,7 +804,7 @@
     }
   },
   "list_tracks": {
-    "description": "List all tracks in the current project with their basic parameters\n(compact; get_project_summary adds routing, recording setup and FX names).",
+    "description": "List all tracks in the current project with their basic parameters and\nrecording setup (armed, record input, monitoring, record mode); compact:\nget_project_summary adds routing and FX names.",
     "input_schema": {
       "properties": {},
       "title": "list_tracksArguments",
@@ -782,6 +850,22 @@
         "project_path"
       ],
       "title": "load_projectArguments",
+      "type": "object"
+    }
+  },
+  "new_project_from_template": {
+    "description": "Start a new project from a project template, in a new project tab (the\ncurrent project stays open in its tab). template: a name from\nlist_project_templates, or the path of a .RPP file. The new project is\nuntitled: save it with save_project before recording. Each call opens\nanother tab, so do not retry it just to be sure.",
+    "input_schema": {
+      "properties": {
+        "template": {
+          "title": "Template",
+          "type": "string"
+        }
+      },
+      "required": [
+        "template"
+      ],
+      "title": "new_project_from_templateArguments",
       "type": "object"
     }
   },
@@ -1101,6 +1185,78 @@
       "type": "object"
     }
   },
+  "save_project_template": {
+    "description": "Save the current project as a project template named name (in REAPER's\nProjectTemplates folder), to start new songs from with new_project_from_template.\nThe open project keeps its own file. An existing template is only replaced with\noverwrite=true. A project with items (recordings, MIDI) is refused unless\ninclude_items=true: every new song would start with them. Remove them first\nfor a clean template.",
+    "input_schema": {
+      "properties": {
+        "include_items": {
+          "default": false,
+          "title": "Include Items",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "save_project_templateArguments",
+      "type": "object"
+    }
+  },
+  "save_track_template": {
+    "description": "Save tracks (with their FX, input, routing between them and settings) as a\ntrack template named name in REAPER's TrackTemplates folder, for\ninsert_track_template. track_indices: the tracks to save; by default the\nselected ones. include_items: also save their items. The track selection is\nleft as it was. An existing template is only replaced with overwrite=true.",
+    "input_schema": {
+      "properties": {
+        "include_envelopes": {
+          "default": true,
+          "title": "Include Envelopes",
+          "type": "boolean"
+        },
+        "include_items": {
+          "default": false,
+          "title": "Include Items",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        },
+        "track_indices": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Indices"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "save_track_templateArguments",
+      "type": "object"
+    }
+  },
   "set_cursor_position": {
     "description": "Move the edit cursor to a position in seconds.",
     "input_schema": {
@@ -1148,6 +1304,46 @@
       "type": "object"
     }
   },
+  "set_loop": {
+    "description": "Turn repeat (looped playback) on or off. start/end (seconds, both or\nneither): also set the loop range. Turning repeat on needs a loop range.\nReports the time selection too: REAPER usually links it to the loop range.",
+    "input_schema": {
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "title": "set_loopArguments",
+      "type": "object"
+    }
+  },
   "set_master_fx_parameter": {
     "description": "Set a normalized parameter (0.0\u20131.0) on a master track FX plugin.",
     "input_schema": {
@@ -1190,6 +1386,99 @@
       "type": "object"
     }
   },
+  "set_metronome": {
+    "description": "Turn the metronome (click) on or off; leave enabled out to only report it.\nAlso reports count_in (REAPER plays the click for a bar or two before it\nstarts recording; null if unknown). Count-in cannot be changed from here:\nright-click the metronome button on REAPER's transport bar and tick\n\"Count-in before recording\".",
+    "input_schema": {
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enabled"
+        }
+      },
+      "title": "set_metronomeArguments",
+      "type": "object"
+    }
+  },
+  "set_monitoring": {
+    "description": "Input monitoring: hear what the track's input receives, through REAPER.\nmode: \"off\", \"on\", or \"tape\" (heard while stopped and recording, not while\nplaying back). Use headphones when it is on (see the warning in the reply).",
+    "input_schema": {
+      "properties": {
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "mode"
+      ],
+      "title": "set_monitoringArguments",
+      "type": "object"
+    }
+  },
+  "set_punch_mode": {
+    "description": "How recording starts and stops, for every project: REAPER keeps this\noption on, in later projects and sessions too, until it is set back to normal.\nmode: \"normal\" (records from the moment you start until you stop) or\n\"time_selection\" (auto-punch: plays the whole time but only records inside the\ntime selection; set it first with set_time_selection).",
+    "input_schema": {
+      "properties": {
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "set_punch_modeArguments",
+      "type": "object"
+    }
+  },
+  "set_record_path": {
+    "description": "The subfolder of the project's folder new recordings go into, e.g. \"Audio\";\n\"\" records next to the project file (REAPER's default, usually fine). Only\nfolders inside the project's folder are accepted, so the takes move with it.",
+    "input_schema": {
+      "properties": {
+        "subfolder": {
+          "title": "Subfolder",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subfolder"
+      ],
+      "title": "set_record_pathArguments",
+      "type": "object"
+    }
+  },
+  "set_recording_format": {
+    "description": "The file format new recordings are written in. REAPER's default (WAV,\n24-bit) is already right for most recording; change it only if asked.\nformat: \"wav\" or \"flac\" (lossless and smaller; REAPER's default FLAC settings).\nbit_depth (WAV only): 24 (recommended), 16, or 32 (32-bit float).",
+    "input_schema": {
+      "properties": {
+        "bit_depth": {
+          "default": 24,
+          "title": "Bit Depth",
+          "type": "integer"
+        },
+        "format": {
+          "default": "wav",
+          "title": "Format",
+          "type": "string"
+        }
+      },
+      "title": "set_recording_formatArguments",
+      "type": "object"
+    }
+  },
   "set_send_volume": {
     "description": "Set the volume of a send in dB.",
     "input_schema": {
@@ -1229,6 +1518,27 @@
         "bpm"
       ],
       "title": "set_tempoArguments",
+      "type": "object"
+    }
+  },
+  "set_time_selection": {
+    "description": "Select the time from start to end (seconds). start == end clears the\nselection. Auto-punch recording (set_punch_mode) records only inside it.\nReports the loop range too: REAPER usually links it to the time selection.",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "title": "End",
+          "type": "number"
+        },
+        "start": {
+          "title": "Start",
+          "type": "number"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "set_time_selectionArguments",
       "type": "object"
     }
   },
@@ -1284,6 +1594,37 @@
       "type": "object"
     }
   },
+  "set_track_input": {
+    "description": "Choose what a track records from.\ninput: \"mono\" (one input, numbered from 1: channel), \"stereo\" (inputs channel and\nchannel+1), \"midi\" (every MIDI device; midi_channel 0 = all channels, or 1-16)\nor \"none\". On a Focusrite Scarlett Solo input 1 is the microphone (XLR) socket\nand input 2 the instrument/line socket, so a guitar is mono channel=2.\nAudio inputs are checked against the interface's input count.",
+    "input_schema": {
+      "properties": {
+        "channel": {
+          "default": 1,
+          "title": "Channel",
+          "type": "integer"
+        },
+        "input": {
+          "title": "Input",
+          "type": "string"
+        },
+        "midi_channel": {
+          "default": 0,
+          "title": "Midi Channel",
+          "type": "integer"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "input"
+      ],
+      "title": "set_track_inputArguments",
+      "type": "object"
+    }
+  },
   "set_track_mute": {
     "description": "Mute or unmute a track.",
     "input_schema": {
@@ -1323,6 +1664,27 @@
         "pan"
       ],
       "title": "set_track_panArguments",
+      "type": "object"
+    }
+  },
+  "set_track_record_mode": {
+    "description": "What an armed track records (per track; the punch mode is set_punch_mode).\nMost recording needs no change: \"input\" is the default.\nmode: \"input\" (the input: voice, guitar, keyboard; the usual choice),\n\"output\" (the track's own stereo output, FX included), \"midi_overdub\" (add\nnotes to existing MIDI items), \"midi_replace\" (replace the notes where you\nplay) or \"none\" (armed for monitoring only, records nothing).",
+    "input_schema": {
+      "properties": {
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "track_index": {
+          "title": "Track Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "track_index",
+        "mode"
+      ],
+      "title": "set_track_record_modeArguments",
       "type": "object"
     }
   },
@@ -1369,23 +1731,58 @@
     }
   },
   "start_recording": {
-    "description": "Arm a track and start recording. Call stop_transport when done.",
+    "description": "Start recording, after checking it can work: not already recording, audio\nrunning, the project saved (so takes are stored next to it), and each track\nthat will record has an input and a record mode that records. Playback is\nstopped first, so the take starts at position.\ntrack_index: the track to record on (armed here); by default the tracks\nalready armed. disarm_others: disarm every other track, so nothing else is\nrecorded by accident. position: start from here (seconds) instead of the edit\ncursor. save_first: save a never-saved project instead of refusing.\nWarns about monitoring, auto-punch and repeat. Stop with stop_recording.",
     "input_schema": {
       "properties": {
+        "disarm_others": {
+          "default": true,
+          "title": "Disarm Others",
+          "type": "boolean"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "save_first": {
+          "default": false,
+          "title": "Save First",
+          "type": "boolean"
+        },
         "track_index": {
-          "title": "Track Index",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Track Index"
         }
       },
-      "required": [
-        "track_index"
-      ],
       "title": "start_recordingArguments",
       "type": "object"
     }
   },
+  "stop_recording": {
+    "description": "Stop recording and keep everything recorded (no dialog asks what to do with\nthe files). Reports each new take: track, item, position and length (seconds),\nfile, and its peak level in dBFS with clipped=true where it hit 0 dBFS.\nTo throw a take away afterwards, call undo with include_manual_steps=true.",
+    "input_schema": {
+      "properties": {},
+      "title": "stop_recordingArguments",
+      "type": "object"
+    }
+  },
   "stop_transport": {
-    "description": "Stop playback or recording.",
+    "description": "Stop playback. While recording, prefer stop_recording: it also lists the\nnew takes. (A recording stopped here is kept too, without a dialog.)",
     "input_schema": {
       "properties": {},
       "title": "stop_transportArguments",

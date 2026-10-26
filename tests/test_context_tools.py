@@ -23,6 +23,9 @@ def test_get_context_of_a_stopped_empty_project(reaper, call):
         "time_selection": None,
         "loop_range": None,
         "repeat": False,
+        "punch_mode": "normal",
+        "metronome": False,
+        "count_in": False,
         "selected_tracks": [],
         "selected_items": [],
         "last_touched_fx": None,
@@ -157,7 +160,7 @@ def test_get_project_summary(reaper, call):
     assert first == {
         "index": 0, "guid": vox.guid, "name": "Vox", "volume_db": -6.02, "pan": 0.0,
         "muted": False, "soloed": False, "armed": True, "record_input": "mono input 1",
-        "monitoring": "on", "fx": ["VST: ReaComp (Cockos)"],
+        "monitoring": "on", "record_mode": "input", "fx": ["VST: ReaComp (Cockos)"],
         "sends": [{"send_index": 0, "dest_track_index": 2, "dest_track_guid": reverb.guid,
                    "dest_track_name": "Reverb", "volume_db": 0.0, "pan": 0.0, "muted": False}],
         "item_count": 0,

@@ -11,6 +11,12 @@ ALL_MIDI_INPUTS = MIDI_INPUT | ALL_MIDI_DEVICES << 5
 # Audio input numbers from 512 up are REAPER's loopback (ReaRoute) channels.
 LOOPBACK_START = 512
 MONITORING = {0: "off", 1: "on", 2: "tape (off while playing)"}
+# I_RECMODE: what an armed track records.
+RECORD_MODES = {
+    0: "input", 1: "output (stereo)", 2: "none (monitoring only)",
+    3: "output (stereo, latency compensated)", 4: "MIDI output", 5: "output (mono)",
+    6: "output (mono, latency compensated)", 7: "MIDI overdub", 8: "MIDI replace",
+}
 
 
 @edits()
@@ -65,11 +71,13 @@ def describe_input(value: int) -> str:
 
 
 def record_state(track) -> dict:
-    """Arming, input and monitoring: what decides what a recording on track captures."""
+    """Arming, input, monitoring and record mode: what decides what a recording
+    on track captures."""
     return {
         "armed": bool(track.get_info_value("I_RECARM")),
         "record_input": describe_input(int(track.get_info_value("I_RECINPUT"))),
         "monitoring": MONITORING.get(int(track.get_info_value("I_RECMON")), "unknown"),
+        "record_mode": RECORD_MODES.get(int(track.get_info_value("I_RECMODE")), "unknown"),
     }
 
 
@@ -154,7 +162,8 @@ def _item_summary(index: int, item) -> dict:
 
 @read_only
 def get_track_info(*, track_index: int) -> dict:
-    """Get detailed information about a track including FX and items."""
+    """Get detailed information about a track including FX, items and its
+    recording setup (armed, record input, monitoring, record mode)."""
     track = get_project().tracks[track_index]
     fxs = track.fxs
     fx_list = [
@@ -168,6 +177,7 @@ def get_track_info(*, track_index: int) -> dict:
         "guid": track_guid(track),
         "name": track.name,
         **mix_state(track),
+        **record_state(track),
         "fx_count": len(fx_list),
         "fx": fx_list,
         "item_count": len(items),
@@ -177,14 +187,16 @@ def get_track_info(*, track_index: int) -> dict:
 
 @read_only
 def list_tracks() -> dict:
-    """List all tracks in the current project with their basic parameters
-    (compact; get_project_summary adds routing, recording setup and FX names)."""
+    """List all tracks in the current project with their basic parameters and
+    recording setup (armed, record input, monitoring, record mode); compact:
+    get_project_summary adds routing and FX names."""
     tracks = [
         {
             "index": i,
             "guid": track_guid(track),
             "name": track.name,
             **mix_state(track),
+            **record_state(track),
             "fx_count": track.n_fxs,
             "item_count": track.n_items,
         }

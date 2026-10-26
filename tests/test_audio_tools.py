@@ -98,31 +98,27 @@ def test_import_audio_file_bad_track(reaper, call, tmp_path):
     assert_no_track(result)
 
 
-# start_recording / stop_transport / play_project
-
-
-def test_start_recording_arms_the_track(reaper, call):
-    track = reaper.add_track("Vox")
-    result = call("start_recording", track_index=0)
-    assert result == {
-        "success": True,
-        "track_index": 0,
-        "message": "Recording started. Call stop_transport to stop.",
-    }
-    assert (reaper.commands, reaper.transport) == ([RECORD], "recording")
-    assert track.info["I_RECARM"] == 1
-
-
-def test_start_recording_bad_track(reaper, call):
-    result = call("start_recording", track_index=0)
-    assert_no_track(result)
-    assert reaper.commands == []
+# stop_transport / play_project (start_recording: tests/test_recording_tools.py)
 
 
 def test_stop_transport(reaper, call):
     reaper.transport = "playing"
     assert call("stop_transport") == {"success": True, "message": "Transport stopped"}
     assert (reaper.commands, reaper.transport) == ([STOP], "stopped")
+
+
+def test_stop_transport_while_recording_keeps_the_take_without_a_prompt(reaper, call):
+    """Plain Transport: Stop can ask what to do with the recorded files (a modal
+    dialog the fake refuses); stop_transport uses Stop (save all recorded media)."""
+    track = reaper.add_track("Vox")
+    track.info["I_RECARM"] = 1.0
+    reaper.Main_OnCommand(RECORD, 0)
+    reaper.commands.clear()
+    result = call("stop_transport")
+    assert result == {"success": True,
+                      "message": "Recording stopped; the recorded files were kept"}
+    assert (reaper.commands, reaper.transport) == ([40667], "stopped")
+    assert len(track.items) == 1
 
 
 def test_play_project(reaper, call):

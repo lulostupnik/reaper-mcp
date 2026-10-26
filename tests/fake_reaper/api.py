@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from reaper_mcp.reaper import ReaScriptAPI
 from tests.fake_reaper.objects import PRESETS, ItemState, Send, TrackState
 from tests.fake_reaper.project import FakeProject
+from tests.fake_reaper.recording import Recording, template_track_names, track_template_text
 from tests.fake_reaper.render import render, render_targets
 from tests.fake_reaper.session import Session
 
 RENDER_PROJECT = 42230
-STRING_PROJECT_INFO = {"RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT", "PROJECT_TITLE"}
+STRING_PROJECT_INFO = {"RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT", "PROJECT_TITLE",
+                       "RECORD_PATH", "RECORD_FORMAT"}
 NUMERIC_PROJECT_INFO = {
     "RENDER_SRATE", "RENDER_CHANNELS", "RENDER_BOUNDSFLAG", "RENDER_ADDTOPROJ",
     "RENDER_STARTPOS", "RENDER_ENDPOS",
@@ -19,13 +23,34 @@ NUMERIC_PROJECT_INFO = {
 NEW_PROJECT_TAB = 41929  # New project tab, ignore default template
 NEW_PROJECT_TAB_FROM_TEMPLATE = 40859  # New project tab (from the default template)
 SAVE_AS_PROJECT_FILE = 8  # Main_SaveProjectEx: the file becomes the project's
-TRANSPORT = {1007: "playing", 1013: "recording", 1016: "stopped"}
+# Main_SaveProjectEx: save the selected tracks as a track template, with their items.
+SAVE_TRACK_TEMPLATE, TEMPLATE_WITH_MEDIA = 1, 2
+TRANSPORT = {1007: "playing", 1016: "stopped"}
 # Track: Toggle track volume / pan envelope visible (on the selected tracks).
 SHOW_ENVELOPE = {40406: "Volume", 40407: "Pan"}
 
 
+# What REAPER fills a short sink config up with (its defaults; the exact bytes
+# are made up, only the fact that it stores a longer config is modelled).
+SINK_DEFAULTS = {b"evaw": b"\x20\x00\x01\x00\x00\x00", b"calf": b"\x18\x00\x00\x00\x05\x00\x00\x00"}
+
+
+def _sink_config(value: str) -> str:
+    """REAPER stores the whole sink configuration, not the string it was given:
+    a short config (e.g. FLAC's bare "calf") comes back with its defaults filled in."""
+    try:
+        raw = base64.b64decode(value, validate=True) if value else b""
+    except ValueError:
+        raw = value.encode()  # a bare 4-byte sink type, e.g. "evaw"
+    defaults = SINK_DEFAULTS.get(raw[:4])
+    if defaults is None:
+        return value
+    full = raw + defaults[len(raw) - 4:]
+    return base64.b64encode(full).decode()
+
+
 @dataclass
-class FakeReaper(Session):
+class FakeReaper(Session, Recording):
     tmp: Path
     bpm: float = 120.0
     # bpm is in quarter notes, as REAPER displays it. The project-settings time
@@ -67,6 +92,7 @@ class FakeReaper(Session):
         self.master = TrackState(self.new_pointer("MediaTrack"), "MASTER")
         self.project = FakeProject(self)
         self.start_session()
+        self.start_recording_state()
 
     def new_pointer(self, kind: str) -> str:
         self._pointer += 1
@@ -101,6 +127,8 @@ class FakeReaper(Session):
             self.render_solos.append([t.name for t in self.tracks if t.info["I_SOLO"]])
         elif command in (NEW_PROJECT_TAB, NEW_PROJECT_TAB_FROM_TEMPLATE):
             self._new_tab(from_template=command == NEW_PROJECT_TAB_FROM_TEMPLATE)
+        elif self.recording_command(command):
+            pass
         elif command in TRANSPORT:
             self.transport = TRANSPORT[command]
         elif command in SHOW_ENVELOPE:
@@ -124,6 +152,9 @@ class FakeReaper(Session):
                 self.add_track(name)
 
     def Main_openProject(self, path: str) -> None:
+        if path.startswith("template:"):
+            self._open_template(path.removeprefix("template:"))
+            return
         if path.lower().endswith(".rpp"):
             if not path.startswith("noprompt:") and self.dirty:
                 raise AssertionError("REAPER would open a modal 'save changes?' dialog")
@@ -134,10 +165,28 @@ class FakeReaper(Session):
                 if line.startswith("<TRACK"):
                     self.add_track(f"from {Path(path).stem}")
 
+    def _open_template(self, path: str) -> None:
+        """A project file loaded as a template replaces the project's contents and
+        leaves it untitled; like any open, it would ask to save unsaved changes."""
+        if self.dirty:
+            raise AssertionError("REAPER would open a modal 'save changes?' dialog")
+        self.opened.append("template:" + path)
+        self.tracks = []
+        for name in template_track_names(Path(path)):
+            self.add_track(name)
+        self.project_file, self.project_name = "", ""
+
     def Main_SaveProjectEx(self, project: int, path: str, options: int) -> None:
-        """Without option 8 REAPER writes a copy and the open project keeps its file."""
-        Path(path).write_text("<REAPER_PROJECT 0.1\n>\n")
+        """Without option 8 REAPER writes a copy and the open project keeps its file.
+        Option 1 writes the selected tracks as a track template instead."""
         self.saved_paths.append(path)
+        if options & SAVE_TRACK_TEMPLATE:
+            names = [t.name for t in self.tracks if t.selected]
+            Path(path).write_text(track_template_text(
+                names, with_items=bool(options & TEMPLATE_WITH_MEDIA)))
+            return
+        tracks = track_template_text([t.name for t in self.tracks], with_items=False)
+        Path(path).write_text(f"<REAPER_PROJECT 0.1\n{tracks}>\n")
         if options & SAVE_AS_PROJECT_FILE:
             self.project_file, self.project_name, self.dirty = path, Path(path).name, False
 
@@ -165,7 +214,7 @@ class FakeReaper(Session):
         if desc not in STRING_PROJECT_INFO:
             return (False, project, desc, "", is_set)  # REAPER: unknown key, nothing set
         if is_set:
-            self.project_info[desc] = value
+            self.project_info[desc] = _sink_config(value) if desc == "RECORD_FORMAT" else value
         return (True, project, desc, self.project_info.get(desc, ""), is_set)
 
     # Tempo and time signature (return shapes as REAPER 7.82 gives them)
@@ -408,7 +457,10 @@ class FakeReaper(Session):
         return value * 1000.0 if mode == 1 else value
 
 
+# ReaScript functions are capitalized, except a few REAPER names in lower case
+# (kbd_getTextFromCmd, get_config_var_string...), taken from the declared surface.
 RPR_FUNCTIONS = sorted(
     name for name in dir(FakeReaper)
-    if name[:1].isupper() and callable(getattr(FakeReaper, name))
+    if (name[:1].isupper() or (name[:1].islower() and hasattr(ReaScriptAPI, name)))
+    and callable(getattr(FakeReaper, name))
 )

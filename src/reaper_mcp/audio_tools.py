@@ -1,8 +1,11 @@
+from reaper_mcp import actions
+from reaper_mcp.actions import STOP_SAVE_RECORDED, TRANSPORT_STOP
 from reaper_mcp.guids import item_guid
 from reaper_mcp.project_tools import absolute_path
 from reaper_mcp.reaper import RPR, get_project
 from reaper_mcp.undo import edits, no_undo
 
+RECORDING = 4  # GetPlayState bit
 AUDIO_SUFFIXES = frozenset({
     ".wav", ".wave", ".aif", ".aiff", ".flac", ".mp3", ".ogg", ".opus", ".wv", ".m4a",
     ".mid", ".midi",
@@ -47,23 +50,15 @@ def import_audio_file(*, file_path: str, track_index: int, position: float = 0.0
     }
 
 
-@edits()
-def start_recording(*, track_index: int) -> dict:
-    """Arm a track and start recording. Call stop_transport when done."""
-    project = get_project()
-    track = project.tracks[track_index]
-    track.set_info_value("I_RECARM", 1)  # reapy's Track has no armed property
-    RPR.Main_OnCommand(1013, 0)  # Transport: Record
-    return {
-        "success": True,
-        "track_index": track_index,
-        "message": "Recording started. Call stop_transport to stop.",
-    }
-
 @no_undo(idempotent=True)
 def stop_transport() -> dict:
-    """Stop playback or recording."""
-    RPR.Main_OnCommand(1016, 0)  # Transport: Stop
+    """Stop playback. While recording, prefer stop_recording: it also lists the
+    new takes. (A recording stopped here is kept too, without a dialog.)"""
+    if RPR.GetPlayState() & RECORDING:
+        actions.run(STOP_SAVE_RECORDED)
+        return {"success": True,
+                "message": "Recording stopped; the recorded files were kept"}
+    actions.run(TRANSPORT_STOP)
     return {"success": True, "message": "Transport stopped"}
 
 @no_undo(idempotent=True)
@@ -165,7 +160,6 @@ def adjust_playback_rate(*, track_index: int, item_index: int, rate: float) -> d
 
 TOOLS = (
     import_audio_file,
-    start_recording,
     stop_transport,
     play_project,
     set_cursor_position,

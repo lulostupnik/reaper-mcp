@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 PRESETS = {"ReaEQ": ["Bright", "Warm"], "ReaComp": ["Gentle"], "ReaLimit": [], "ReaSynth": []}
 
 # REAPER's values for track settings a new track's info dict leaves out.
-TRACK_DEFAULTS = {"I_RECARM": 0.0, "I_RECINPUT": 0.0, "I_RECMON": 0.0, "B_MAINSEND": 1.0,
-                  "I_FOLDERDEPTH": 0.0}
+TRACK_DEFAULTS = {"I_RECARM": 0.0, "I_RECINPUT": 0.0, "I_RECMON": 0.0, "I_RECMODE": 0.0,
+                  "B_MAINSEND": 1.0, "I_FOLDERDEPTH": 0.0}
 
 # The plugins the fake REAPER has installed; anything else is "not found".
 INSTALLED_FX = {
@@ -56,6 +56,7 @@ class ItemState:
     midi: bool
     notes: list[Note] = field(default_factory=list)
     has_take: bool = True  # REAPER items can hold no take at all
+    extra_takes: int = 0  # takes besides the active one (recorded into an existing item)
     info: dict[str, float] = field(
         default_factory=lambda: {"D_FADEINLEN": 0.0, "D_FADEOUTLEN": 0.0}
     )
@@ -63,6 +64,7 @@ class ItemState:
         default_factory=lambda: {"D_STARTOFFS": 0.0, "D_PITCH": 0.0, "D_PLAYRATE": 1.0}
     )
     selected: bool = False
+    source_file: str = ""  # the take's audio file; "" for MIDI and imported stand-ins
 
     @property
     def guid(self) -> str:
@@ -89,6 +91,7 @@ class TrackState:
         default_factory=lambda: {"D_VOL": 1.0, "D_PAN": 0.0, "B_MUTE": 0.0, "I_SOLO": 0.0}
     )
     selected: bool = False
+    input_level: float = 0.0  # linear peak of what the track's input receives
 
     @property
     def guid(self) -> str:
@@ -219,7 +222,7 @@ class FakeItem:
 
     @property
     def n_takes(self) -> int:
-        return 1 if self._state.has_take else 0
+        return 1 + self._state.extra_takes if self._state.has_take else 0
 
     def get_info_value(self, param: str) -> float:
         return self._state.info[param]

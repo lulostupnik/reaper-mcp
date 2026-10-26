@@ -184,6 +184,10 @@ def test_get_track_info(reaper, call):
         "pan": 0.25,
         "muted": True,
         "soloed": False,
+        "armed": False,
+        "record_input": "mono input 1",
+        "monitoring": "off",
+        "record_mode": "input",
         "fx_count": 0,
         "fx": [],
         "item_count": 1,
@@ -218,8 +222,19 @@ def test_list_tracks(reaper, call):
     assert result["count"] == 2
     assert result["tracks"][1] == {
         "index": 1, "guid": b.guid, "name": "b", "volume_db": 0.0, "pan": 0.0,
-        "muted": False, "soloed": True, "fx_count": 0, "item_count": 0,
+        "muted": False, "soloed": True, "armed": False, "record_input": "mono input 1",
+        "monitoring": "off", "record_mode": "input", "fx_count": 0, "item_count": 0,
     }
+
+
+def test_list_tracks_shows_the_recording_setup(reaper, call):
+    gtr = reaper.add_track("Gtr")
+    gtr.info.update(I_RECARM=1.0, I_RECINPUT=1.0, I_RECMON=2.0, I_RECMODE=7.0)
+    [track] = call("list_tracks")["tracks"]
+    assert (track["armed"], track["record_input"], track["monitoring"], track["record_mode"]) == (
+        True, "mono input 2", "tape (off while playing)", "MIDI overdub")
+    info = call("get_track_info", track_index=0)
+    assert (info["armed"], info["record_mode"]) == (True, "MIDI overdub")
 
 
 def test_set_track_color(reaper, call):

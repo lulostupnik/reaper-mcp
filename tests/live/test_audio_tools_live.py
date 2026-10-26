@@ -37,11 +37,18 @@ def test_adjust_playback_rate(add_tone, call, live_project):
     assert item_and_take(live_project)[1].get_info_value("D_PLAYRATE") == pytest.approx(0.5)
 
 
-def test_start_recording_arms_the_track(live_project, call):
+def test_start_recording_arms_the_track_and_stop_recording_reports_the_take(
+    live_project, call, tmp_path
+):
     live_project.add_track(0, "vox")
+    # Recordings go next to the project file: save the scratch project in tmp_path.
+    assert call("save_project", project_path=str(tmp_path / "rec.rpp"))["success"]
+    assert call("set_track_input", track_index=0, input="mono", channel=1)["success"]
     result = call("start_recording", track_index=0)
-    call("stop_transport")
+    stopped = call("stop_recording") if result.get("success") else call("stop_transport")
     assert result["success"] is True, result
     assert live_project.tracks[0].get_info_value("I_RECARM") == 1
+    assert stopped["success"] is True, stopped
+    assert [take["track_index"] for take in stopped["takes"]] == [0], stopped
     for item in list(live_project.tracks[0].items):
         item.delete()
