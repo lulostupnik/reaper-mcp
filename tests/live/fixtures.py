@@ -17,6 +17,7 @@ from tests.live.rpr import RPR
 from tests.live.watchdog import Watchdog, guard_reapy
 
 RESET_BPM = 120.0
+SAVE_AS_PROJECT_FILE = 8  # Main_SaveProjectEx: the copy becomes the project's file
 
 
 def _connect() -> reapy.Project:
@@ -62,13 +63,33 @@ def dialog_watchdog():
     watchdog.stop()
 
 
+@pytest.fixture(scope="session")
+def scratch_folder(tmp_path_factory):
+    return tmp_path_factory.mktemp("live-project")
+
+
 @pytest.fixture
-def live_project(dialog_watchdog):
-    """The running REAPER's current project, emptied before and after the test."""
+def live_project(dialog_watchdog, scratch_folder):
+    """The running REAPER's current project, emptied before and after the test.
+    A project never saved is first saved under tmp: REAPER writes the media it
+    makes or copies (glue, imported files, recordings) into the project's
+    folder, which for an unsaved project is ~/Documents/REAPER Media."""
     project = _connect()
+    if not RPR.EnumProjects(-1, "", 4096)[2]:
+        RPR.Main_SaveProjectEx(0, str(scratch_folder / "live.rpp"), SAVE_AS_PROJECT_FILE)
     reset(project)
     yield project
     reset(project)
+
+
+@pytest.fixture
+def project_in_tmp(live_project, tmp_path):
+    """The project saved as a file under tmp_path, so what REAPER writes next
+    to it (glued items, recordings) stays there. A never-saved project would
+    write into REAPER's default media folder (~/Documents/REAPER Media)."""
+    RPR.Main_SaveProjectEx(0, str(tmp_path / "live.rpp"), SAVE_AS_PROJECT_FILE)
+    assert RPR.GetProjectPath("", 4096)[0].startswith(str(tmp_path))
+    return live_project
 
 
 def write_tone(path, frequency: float, seconds: float = 2.0, amplitude: float = 0.1) -> None:

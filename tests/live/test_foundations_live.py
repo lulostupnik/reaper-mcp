@@ -270,7 +270,7 @@ ALL_EDITS = {
 
 @pytest.mark.parametrize("tool", list(ALL_EDITS))
 def test_every_edit_is_one_step_that_undo_takes_back_whole(
-        live_project, call, add_tone, tmp_path, tool):
+        project_in_tmp, live_project, call, add_tone, tmp_path, tool):
     add_tone("a", 440)
     live_project.tracks[0].add_fx("ReaEQ")
     other = live_project.add_track(1, "b")
