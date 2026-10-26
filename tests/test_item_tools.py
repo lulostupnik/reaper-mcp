@@ -77,6 +77,15 @@ def test_list_items_bad_track(reaper, call):
 # edit_item
 
 
+def test_edit_item_fade_replaces_an_automatic_crossfade(reaper, call):
+    """REAPER plays an automatic crossfade instead of a manual fade (7.69)."""
+    track = reaper.add_track("Vox")
+    item = _item(reaper, track, info={"D_FADEINLEN_AUTO": 1.0, "D_FADEOUTLEN_AUTO": 0.5})
+    assert call("edit_item", item=item.guid, fade_in=0.2)["success"] is True
+    assert (item.info["D_FADEINLEN"], item.info["D_FADEINLEN_AUTO"]) == (0.2, 0.0)
+    assert item.info["D_FADEOUTLEN_AUTO"] == 0.5  # the other side is left alone
+
+
 def test_edit_item_sets_exact_values_by_guid(reaper, call):
     track = reaper.add_track("Vox")
     item = _item(reaper, track, info={"D_FADEINLEN": 0.5, "D_FADEOUTLEN": 0.25,
@@ -209,6 +218,16 @@ def test_split_item_refuses_times_outside(reaper, call, times):
     result = call("split_item", item=0, track_index=0, times=times)
     assert result["success"] is False and "inside the item (1 to 5 s)" in result["error"]
     assert len(track.items) == 1
+
+
+def test_split_item_cuts_1_ms_apart_and_1_ms_from_the_edges(reaper, call):
+    """1.001 - 1.0 is a little under 0.001 in floating point: the cut must
+    still be made (it was silently dropped)."""
+    track = reaper.add_track("Vox")
+    item = _item(reaper, track, position=0.0, length=2.0)
+    result = call("split_item", item=item.guid, times=[0.001, 1.0, 1.001, 1.999])
+    assert result["success"] is True, result
+    assert len(result["pieces"]) == 5
 
 
 def test_split_item_counts_nearly_equal_times_once(reaper, call):

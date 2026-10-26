@@ -95,7 +95,7 @@ class FakeReaper(Items, Session, Recording, Transport, Markers, Envelopes, FX, E
     # Track names the user's default project template gives a new project tab.
     default_template_tracks: list[str] = field(default_factory=list)
     # Glue keeps the first selected item (its GUID) and gives it the glued take,
-    # instead of making a new item; real REAPER's way is not confirmed yet.
+    # instead of making a new item (REAPER 7.69 makes a new item).
     glue_reuses_first_item: bool = False
     # Seconds the glued item's length differs from the glued extent (REAPER may
     # round it to whole samples of the rendered file).

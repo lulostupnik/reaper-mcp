@@ -132,6 +132,19 @@ def test_glue_items_restores_the_selection(reaper, call):
     assert [i.guid for i in reaper.tracks[0].items] == [first.guid, second.guid]
 
 
+def test_glue_items_does_not_select_the_glued_item_in_place_of_a_selected_original(reaper, call):
+    """REAPER gives the glued item the address of a glued-away one (7.69), so the
+    selection is put back by GUID, not by checking the old pointers."""
+    track = reaper.add_track("Vox")
+    first = _item(reaper, track, position=0.0, length=1.0)
+    second = _item(reaper, track, position=2.0, length=1.0, selected=True)
+    other = _item(reaper, reaper.add_track("Other"), position=0.0, selected=True)
+    assert call("glue_items", items_to_glue=[first.guid, second.guid])["success"] is True
+    [glued] = track.items
+    assert glued.pointer == second.pointer and glued.guid != second.guid
+    assert other.selected and not glued.selected
+
+
 def test_glue_items_finds_the_result_when_reaper_reuses_the_first_item(reaper, call):
     reaper.glue_reuses_first_item = True
     track = reaper.add_track("Vox")

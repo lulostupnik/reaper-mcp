@@ -94,8 +94,9 @@ def _apply(ref: ItemRef, settings: dict) -> list[str]:
         changed.append(name)
         if name in fades:
             RPR.SetMediaItemInfo_Value(item, fades[name], float(value))
-            if value == 0:  # an automatic crossfade would still be heard
-                RPR.SetMediaItemInfo_Value(item, AUTO_FADES[name], 0.0)
+            # While an automatic crossfade length is set, REAPER plays it and
+            # not the manual fade (heard in a render on 7.69), so it goes too.
+            RPR.SetMediaItemInfo_Value(item, AUTO_FADES[name], 0.0)
         elif name == "start":
             items.set_start(item, value)
         elif name == "end":
@@ -134,7 +135,8 @@ def edit_item(  # noqa: PLR0913 -- one argument per item setting
     start/end: where the item starts/ends (project seconds); the audio stays where
     it is in time, so this trims (or uncovers) the item's edges. To move the
     whole item use move_item.
-    fade_in/fade_out: fade length in seconds, 0 removes the fade.
+    fade_in/fade_out: fade length in seconds, 0 removes the fade. An automatic
+    crossfade on that side is removed, so the fade set here is what plays.
     volume_db: the item's own volume, the one to use for "make this louder/quieter".
     take_volume_db: the active take's volume, which normalize_item sets; usually
     leave it alone. Both add up, and the track's volume comes on top.

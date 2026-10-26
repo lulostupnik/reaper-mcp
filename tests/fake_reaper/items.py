@@ -267,6 +267,9 @@ class Items(Sources):
         path = str(self.tmp / f"glued-{len(self.commands):03d}.wav")
         glued = ItemState(self.new_pointer("MediaItem"), start, end - start, False,
                           source_file=path, selected=True)
+        # REAPER gives the glued item the address of the last glued-away one
+        # (seen on 7.69), with a new GUID.
+        glued.pointer = max(chosen, key=lambda i: i.position).pointer
         glued.take.name = re.sub(r"\.wav$", "", path.rsplit("/", 1)[-1])
         if self.glue_reuses_first_item:
             first = min(chosen, key=lambda i: i.position)

@@ -18,8 +18,10 @@ from reaper_mcp.units import linear_to_db
 LOCKED = 1  # C_LOCK bit
 FIXED_LANES = 2  # a track's I_FREEMODE with fixed item lanes (REAPER 7)
 STRING_SIZE = 4096
-ITEM_TYPE = "MediaItem*"
 MIN_PIECE = 0.001  # seconds: split times closer than this to each other or an edge are refused
+# Times are compared with this slack: 1.001 - 1.0 is a little under 0.001 in
+# floating point, and a cut 1 ms after another must not be dropped.
+TIME_SLACK = 1e-9
 
 
 @dataclass(frozen=True)
@@ -193,14 +195,15 @@ def split_times(item: Pointer, times: list[float]) -> list[float]:
     ValueError when one is outside the item or closer than MIN_PIECE to its edge."""
     start = item_value(item, "D_POSITION")
     end = start + item_value(item, "D_LENGTH")
-    outside = [t for t in times if not start + MIN_PIECE <= t <= end - MIN_PIECE]
+    outside = [t for t in times
+               if not start + MIN_PIECE - TIME_SLACK <= t <= end - MIN_PIECE + TIME_SLACK]
     if not times or outside:
         raise ValueError(f"split times must be inside the item ({start:g} to {end:g} s) and "
                          f"at least {MIN_PIECE * 1000:g} ms from its edges; not so: "
                          f"{outside or 'no times given'}")
     kept: list[float] = []
     for time in sorted(times):
-        if not kept or time - kept[-1] >= MIN_PIECE:
+        if not kept or time - kept[-1] >= MIN_PIECE - TIME_SLACK:
             kept.append(time)
     return kept
 
@@ -283,19 +286,15 @@ def describe_pieces(pointers: list[Pointer]) -> list[dict]:
              "length": item_value(p, "D_LENGTH")} for p in pointers]
 
 
-def address(pointer: Pointer) -> int:
-    """The number in a pointer string ("(MediaItem*)0x...")."""
-    return int(pointer.rsplit("0x", 1)[1], 16)
-
-
 @contextmanager
 def only_selected(items: list[Pointer]) -> Iterator[None]:
     """Select exactly items while the body runs (for an action that works on
     the selected items), then put the user's selection back: the items that
-    still exist; ValidatePtr2 checks, since a dangling pointer crashes REAPER.
-    reapy replaces ValidatePtr2 with its own, which takes the pointer as a
-    number, not as REAPER's pointer string (a string raised TypeError, 7.69)."""
-    before = [RPR.GetSelectedMediaItem(0, i) for i in range(RPR.CountSelectedMediaItems(0))]
+    still exist, found by GUID. Not by pointer: REAPER gives the item an action
+    makes the address of one it removed (glue does, seen on 7.69), so a pointer
+    check would select the new item in place of the removed one."""
+    before = {item_guid_of(RPR.GetSelectedMediaItem(0, i))
+              for i in range(RPR.CountSelectedMediaItems(0))}
     RPR.SelectAllMediaItems(0, False)
     for item in items:
         RPR.SetMediaItemSelected(item, True)
@@ -303,6 +302,6 @@ def only_selected(items: list[Pointer]) -> Iterator[None]:
         yield
     finally:
         RPR.SelectAllMediaItems(0, False)
-        for item in before:
-            if RPR.ValidatePtr2(0, address(item), ITEM_TYPE):
-                RPR.SetMediaItemSelected(item, True)
+        for ref in all_items():
+            if ref.guid in before:
+                RPR.SetMediaItemSelected(ref.pointer, True)

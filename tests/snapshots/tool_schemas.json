@@ -996,7 +996,7 @@
     }
   },
   "edit_item": {
-    "description": "Set an item's settings to exact values; anything left out stays as it is.\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nstart/end: where the item starts/ends (project seconds); the audio stays where\nit is in time, so this trims (or uncovers) the item's edges. To move the\nwhole item use move_item.\nfade_in/fade_out: fade length in seconds, 0 removes the fade.\nvolume_db: the item's own volume, the one to use for \"make this louder/quieter\".\ntake_volume_db: the active take's volume, which normalize_item sets; usually\nleave it alone. Both add up, and the track's volume comes on top.\nmuted, locked: locked=false unlocks a locked item (and allows the other changes).",
+    "description": "Set an item's settings to exact values; anything left out stays as it is.\nitem: the item's GUID from list_items (preferred), or its index on track_index.\nstart/end: where the item starts/ends (project seconds); the audio stays where\nit is in time, so this trims (or uncovers) the item's edges. To move the\nwhole item use move_item.\nfade_in/fade_out: fade length in seconds, 0 removes the fade. An automatic\ncrossfade on that side is removed, so the fade set here is what plays.\nvolume_db: the item's own volume, the one to use for \"make this louder/quieter\".\ntake_volume_db: the active take's volume, which normalize_item sets; usually\nleave it alone. Both add up, and the track's volume comes on top.\nmuted, locked: locked=false unlocks a locked item (and allows the other changes).",
     "input_schema": {
       "properties": {
         "end": {
