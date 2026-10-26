@@ -18,6 +18,7 @@ from reaper_mcp import (
     mixing_tools,
     project_template_tools,
     project_tools,
+    reaper,
     record_setup_tools,
     recording_tools,
     region_render,
@@ -55,18 +56,40 @@ def _serialized(fn: Callable[..., dict]) -> Callable[..., dict]:
     {"success": False, "error": str(e)} instead of an MCP error, which is the
     contract every tool here has always had. functools.wraps keeps the
     signature, which the SDK reads to build the tool's input schema.
+
+    When a call to REAPER timed out or its connection dropped, the result says
+    the outcome is uncertain, whatever the tool itself returned (it may have
+    caught the error and carried on); what it returned is kept as
+    partial_result.
     """
+    kind = getattr(fn, "_tool_kind", None)
+    read_only = bool(kind and kind.annotations.read_only_hint)
 
     @functools.wraps(fn)
     def run(*args: Any, **kwargs: Any) -> dict:
         with _reaper_lock:
+            reaper.start_tool_call()
+            partial = None
             try:
-                return fn(*args, **kwargs)
+                result = partial = fn(*args, **kwargs)
             except Exception as e:
                 logger.error("%s failed: %s", fn.__name__, e)
-                return {"success": False, "error": str(e)}
+                result = {"success": False, "error": str(e)}
+            lost = reaper.lost_call()
+            if lost is None:
+                return result
+            return uncertain_result(lost, read_only=read_only, partial=partial)
 
     return run
+
+
+def uncertain_result(lost: reaper.OutcomeUncertain, *, read_only: bool = False,
+                     partial: dict | None = None) -> dict:
+    result = {"success": False, "outcome": "uncertain", "error": str(lost),
+              "next_step": reaper.uncertain_next_step(lost, read_only=read_only)}
+    if partial is not None:
+        result["partial_result"] = partial
+    return result
 
 
 mcp = _server

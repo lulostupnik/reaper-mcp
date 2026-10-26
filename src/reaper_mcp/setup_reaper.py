@@ -11,10 +11,13 @@ Run it once with REAPER closed (REAPER rewrites its .ini files on exit). It:
      action ID), since through those `import reapy` can start reapy's own
      server, which listens on every network interface;
   5. on Linux, points REAPER's ReaScript Python at this interpreter's libpython
-     when Python is not configured yet.
+     when Python is not configured yet;
+  6. creates the bridge's secret token (bridge_token.py) in a file only the
+     user can read, if there is no usable one yet. Running setup again keeps
+     it, so a running MCP server goes on working.
 
 It never enables reapy's distant API or REAPER's web interface, and
---uninstall removes what steps 1-3 added.
+--uninstall removes what steps 1-3 added (the token file stays, harmless).
 """
 
 import argparse
@@ -28,6 +31,8 @@ from pathlib import Path
 
 import psutil
 
+from reaper_mcp import bridge_token
+
 LAUNCHER_NAME = "reaper_mcp_bridge.py"
 BEGIN = "-- BEGIN reaper-mcp bridge (added by reaper-mcp-setup)"
 END = "-- END reaper-mcp bridge"
@@ -40,6 +45,7 @@ import site
 import sys
 
 PATHS = {paths!r}
+TOKEN_FILE = {token_file!r}
 # First on the path, so the pinned reapy wins over any other installed copy;
 # addsitedir then reads the .pth files (the editable install's source folder).
 sys.path[:0] = [p for p in PATHS if p not in sys.path]
@@ -48,7 +54,7 @@ for path in PATHS:
 
 from reaper_mcp.bridge import main
 
-main()
+main(token_file=TOKEN_FILE)
 '''
 
 STARTUP_BLOCK = f'''{BEGIN}
@@ -244,15 +250,25 @@ def _remove_reapy_leftovers(resource: Path, report: list[str]) -> None:
         report.append("removed reapy's saved server action from reaper-extstate.ini")
 
 
-def install(resource: Path) -> list[str]:
+def install(resource: Path, token_file: Path | None = None) -> list[str]:
+    """token_file: where the bridge token lives (default: bridge_token.token_path())."""
     report: list[str] = []
     scripts = resource / "Scripts"
     startup = scripts / "__startup.lua"
     startup_text = _strip_block(_read(startup))  # fails before anything is written
 
+    try:
+        token_file, done = bridge_token.ensure_token(token_file)
+    except OSError as e:
+        where = token_file or bridge_token.token_path()
+        raise SetupError(
+            f"cannot write the bridge token {where} ({e}); make sure its folder "
+            f"{where.parent} belongs to you (it may have been created with sudo)") from e
+    report.append(done)
+
     scripts.mkdir(parents=True, exist_ok=True)
     launcher = scripts / LAUNCHER_NAME
-    _write(launcher, LAUNCHER.format(paths=_site_paths()))
+    _write(launcher, LAUNCHER.format(paths=_site_paths(), token_file=str(token_file)))
     report.append(f"wrote {launcher}")
 
     action = command_id(launcher)
@@ -320,7 +336,8 @@ def main() -> int:
         return 1
     print("\n".join(report))
     if not args.uninstall:
-        print("Done. Start REAPER; the bridge listens on 127.0.0.1 only.")
+        print("Done. Start REAPER; the bridge listens on 127.0.0.1 only and "
+              "answers only clients that know the token.")
     return 0
 
 

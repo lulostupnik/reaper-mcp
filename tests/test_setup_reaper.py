@@ -6,7 +6,9 @@ import time
 
 import pytest
 
-from reaper_mcp import bridge, setup_reaper
+from reaper_mcp import bridge, bridge_token, setup_reaper
+
+TOKEN = b"0" * 64
 
 
 @pytest.fixture
@@ -39,6 +41,35 @@ def test_install_is_idempotent_and_keeps_existing_settings(resource):
     ini = (resource / "reaper.ini").read_text()
     assert "csurf" not in ini  # never adds a web interface
     assert "[verchk]\nlastt=1" in ini
+
+
+def test_install_creates_the_token_once_and_the_launcher_names_its_file(resource):
+    first = setup_reaper.install(resource)
+    token = bridge_token.read_token()
+    second = setup_reaper.install(resource)
+
+    assert bridge_token.read_token() == token  # a running MCP server keeps working
+    assert any(line.startswith("created the bridge token") for line in first)
+    assert any(line.startswith("kept the bridge token") for line in second)
+    launcher = (resource / "Scripts" / setup_reaper.LAUNCHER_NAME).read_text()
+    assert f"TOKEN_FILE = {str(bridge_token.token_path())!r}" in launcher
+    assert "main(token_file=TOKEN_FILE)" in launcher
+
+
+def test_a_token_folder_setup_cannot_write_is_a_clear_setup_error(resource, monkeypatch):
+    def denied(path=None):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(bridge_token, "ensure_token", denied)
+    with pytest.raises(setup_reaper.SetupError, match="belongs to you"):
+        setup_reaper.install(resource)
+
+
+def test_uninstall_leaves_the_token(resource):
+    setup_reaper.install(resource)
+    token = bridge_token.read_token()
+    setup_reaper.uninstall(resource)
+    assert bridge_token.read_token() == token
 
 
 def test_install_leaves_a_configured_python_alone(resource):
@@ -115,7 +146,7 @@ def test_a_broken_startup_block_stops_setup_before_writing(resource):
 
 
 def test_bridge_listens_on_loopback_only():
-    server = bridge.LocalServer(0)
+    server = bridge.LocalServer(0, TOKEN)
     try:
         host, port = server._socket.getsockname()
         assert host == "127.0.0.1"
@@ -172,7 +203,7 @@ def test_bridge_drops_a_client_that_stalls_mid_request(tcp_pair, monkeypatch):
 
 
 def test_bridge_disconnects_a_malformed_request_and_keeps_serving():
-    server = bridge.LocalServer(0)
+    server = bridge.LocalServer(0, TOKEN)
     port = server._socket.getsockname()[1]
     try:
         bad = socket.create_connection(("127.0.0.1", port))

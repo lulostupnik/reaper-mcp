@@ -12,6 +12,7 @@ from tests.fake_reaper.project import FakeProject
 from tests.fake_reaper.recording import Recording, template_track_names, track_template_text
 from tests.fake_reaper.render import render, render_targets
 from tests.fake_reaper.session import Session
+from tests.fake_reaper.transport import Transport
 
 RENDER_PROJECT = 42230
 STRING_PROJECT_INFO = {"RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT", "PROJECT_TITLE",
@@ -50,7 +51,7 @@ def _sink_config(value: str) -> str:
 
 
 @dataclass
-class FakeReaper(Session, Recording):
+class FakeReaper(Session, Recording, Transport):
     tmp: Path
     bpm: float = 120.0
     # bpm is in quarter notes, as REAPER displays it. The project-settings time
@@ -93,6 +94,7 @@ class FakeReaper(Session, Recording):
         self.project = FakeProject(self)
         self.start_session()
         self.start_recording_state()
+        self.start_transport()
 
     def new_pointer(self, kind: str) -> str:
         self._pointer += 1

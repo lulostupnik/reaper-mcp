@@ -23,7 +23,13 @@ from typing import Any
 
 from mcp.types import ToolAnnotations
 
-from reaper_mcp.reaper import RPR, ensure_connected
+from reaper_mcp.reaper import (
+    RPR,
+    OutcomeUncertain,
+    ensure_connected,
+    lost_call,
+    owe_on_reconnect,
+)
 
 # Undo_EndBlock2's extraflags: -1 records every kind of state (UNDO_STATE_ALL).
 UNDO_STATE_ALL = -1
@@ -94,23 +100,57 @@ def describe(description: str) -> None:
 def undo_block(description: str) -> Iterator[None]:
     """Everything done inside is one REAPER undo step named description,
     with the UI redrawn once at the end instead of after every change.
-    The step's name gets FAILED_SUFFIX when the body raises or calls failed()."""
+    The step's name gets FAILED_SUFFIX when the body raises or calls failed().
+
+    If a call to REAPER is lost anywhere (opening the block, inside it or
+    closing it), the closing calls still owed are run at the next tool call
+    that reaches the same REAPER, so the block is not left open with the UI
+    frozen. An opening call counts as made once sent: REAPER may have run it."""
     ensure_connected()
-    RPR.Undo_BeginBlock2(0)
-    RPR.PreventUIRefresh(1)
+    lost = lost_call()
+    if lost is not None:
+        raise lost
     _open_blocks.append(UNDO_PREFIX + description)
+    opened: list[str] = []
     ok = False
     try:
+        opened.append("block")
+        RPR.Undo_BeginBlock2(0)
+        opened.append("refresh")
+        RPR.PreventUIRefresh(1)
         yield
         ok = True
     finally:
         name = _open_blocks.pop()
-        if not ok and not name.endswith(FAILED_SUFFIX):
+        if (lost_call() is not None or not ok) and not name.endswith(FAILED_SUFFIX):
             name += FAILED_SUFFIX
-        RPR.PreventUIRefresh(-1)
-        RPR.Undo_EndBlock2(0, name, UNDO_STATE_ALL)
-        RPR.TrackList_AdjustWindows(False)
-        RPR.UpdateArrange()
+        _run_or_owe(_closing_calls(name, opened))
+
+
+def _closing_calls(name: str, opened: list[str]) -> list[Callable[[], object]]:
+    """The calls that undo what opened lists, innermost first, then the redraw."""
+    calls: list[Callable[[], object]] = []
+    if "refresh" in opened:
+        calls.append(lambda: RPR.PreventUIRefresh(-1))
+    if "block" in opened:
+        calls.append(lambda: RPR.Undo_EndBlock2(0, name, UNDO_STATE_ALL))
+    calls.append(lambda: RPR.TrackList_AdjustWindows(False))
+    calls.append(lambda: RPR.UpdateArrange())
+    return calls
+
+
+def _run_or_owe(calls: list[Callable[[], object]]) -> None:
+    """Run calls in order; once a call to REAPER is lost (before or during
+    them), owe the rest to the next connection. The lost one is not owed
+    again: it may have run."""
+    for index, call in enumerate(calls):
+        if lost_call() is not None:
+            owe_on_reconnect(*calls[index:])
+            return
+        try:
+            call()
+        except OutcomeUncertain:
+            continue  # the next turn owes the rest
 
 
 def failed() -> None:

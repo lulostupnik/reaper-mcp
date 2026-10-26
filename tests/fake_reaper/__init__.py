@@ -4,8 +4,11 @@
 ``reapy.connect``, the bridge connection, ``reapy.Project`` and the functions on
 ``reapy.reascript_api``. Everything above those (tool modules, the server,
 the MCP client) runs for real. See objects.py for the fidelity rules.
+Calls to those functions go through reaper.guarded, as reapy's requests do,
+so a test can lose one (see transport.py).
 """
 
+import functools
 from pathlib import Path
 
 import pytest
@@ -20,11 +23,20 @@ from tests.fake_reaper.signatures import checked
 def install(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakeReaper:
     fake = FakeReaper(tmp_path)
     monkeypatch.setattr(reapy, "connect", lambda *a, **k: None)
-    monkeypatch.setattr(reaper_module, "_connect_to_bridge", lambda: None)
+    monkeypatch.setattr(reaper_module, "_connect_to_bridge", lambda: fake.bridge_instance)
     monkeypatch.setattr(reapy, "Project", lambda *a, **k: fake.project)
     for name in RPR_FUNCTIONS:
-        monkeypatch.setattr(reascript_api, name, checked(name, getattr(fake, name)), raising=False)
+        function = _over_bridge(fake, name, checked(name, getattr(fake, name)))
+        monkeypatch.setattr(reascript_api, name, function, raising=False)
     return fake
+
+
+def _over_bridge(fake: FakeReaper, name: str, function):
+    @functools.wraps(function)
+    def call(*args):
+        return reaper_module.guarded(name, lambda: fake.deliver(name, function, args))
+
+    return call
 
 
 __all__ = ["FakeReaper", "install"]

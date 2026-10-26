@@ -22,7 +22,14 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from reaper_mcp.reaper import RPR, get_project
+from reaper_mcp.reaper import (
+    RENDER_TIMEOUT_SECONDS,
+    RPR,
+    get_project,
+    lost_call,
+    owe_on_reconnect,
+    slow_calls,
+)
 from reaper_mcp.undo import no_undo
 
 # "File: Render project, using the most recent render settings, auto-close
@@ -61,7 +68,16 @@ def save_render_settings(strings: tuple[str, ...], numbers: tuple[str, ...]
 def restore_render_settings(strings: dict[str, str], numbers: dict[str, float]) -> list[str]:
     """Put each setting back on its own, so one failure (say, a client that
     disconnected during a long render) does not leave the rest unrestored.
-    Returns the failures as "KEY: error"."""
+    Returns the failures as "KEY: error".
+
+    When a call to REAPER was lost in this tool call (say, the render timed
+    out), nothing more can be sent now, so the whole restore is owed to the
+    next tool call that reaches the same REAPER (setting a value twice is
+    harmless)."""
+    if lost_call() is not None:
+        owe_on_reconnect(lambda: restore_render_settings(strings, numbers))
+        return ["REAPER stopped answering; the render settings are put back at the "
+                "next tool call"]
     errors = []
     for key, value in strings.items():
         try:
@@ -73,6 +89,8 @@ def restore_render_settings(strings: dict[str, str], numbers: dict[str, float]) 
             RPR.GetSetProjectInfo(0, key, number, True)
         except Exception as e:
             errors.append(f"{key}: {e}")
+    if lost_call() is not None:  # lost part-way: put them all back later
+        return restore_render_settings(strings, numbers)
     return errors
 
 
@@ -122,7 +140,8 @@ def _render(target: Path, *, format: str, sample_rate: int, bit_depth: int,
     RPR.GetSetProjectInfo(0, "RENDER_CHANNELS", float(channels), True)
     RPR.GetSetProjectInfo(0, "RENDER_BOUNDSFLAG", float(bounds), True)
     RPR.GetSetProjectInfo(0, "RENDER_ADDTOPROJ", 0.0, True)
-    RPR.Main_OnCommand(RENDER_PROJECT, 0)
+    with slow_calls(RENDER_TIMEOUT_SECONDS):  # the call returns when the render ends
+        RPR.Main_OnCommand(RENDER_PROJECT, 0)
 
 
 def _require_content(project) -> None:

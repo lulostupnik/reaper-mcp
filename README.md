@@ -39,7 +39,9 @@ This writes `Scripts/reaper_mcp_bridge.py` in REAPER's resource folder,
 registers it as an action, and runs it from `Scripts/__startup.lua` every time
 REAPER starts (an existing `__startup.lua` is kept; the bridge is added as a
 marked block). On Linux it also points REAPER's ReaScript Python at the venv's
-`libpython` if Python is not configured yet. Then start REAPER.
+`libpython` if Python is not configured yet. It also creates the bridge's
+secret token (see [Safety](#safety)) if there is no usable one yet; running
+setup again keeps it. Then start REAPER.
 
 To remove it: `.venv/bin/reaper-mcp-setup --uninstall`.
 
@@ -51,9 +53,19 @@ about any other password-less web interface it finds and leaves it alone.
 
 ### Safety
 
-- The bridge only accepts connections from the same computer. Any program
-  on that computer, under any user account, can still connect and run code
-  as you inside REAPER, so use it on a computer you don't share.
+- The bridge only accepts connections from the same computer, and only from
+  programs that know its secret token, which `reaper-mcp-setup` creates in a
+  file only you can read: `~/.config/reaper-mcp/token` on Linux,
+  `~/Library/Application Support/reaper-mcp/token` on macOS,
+  `%APPDATA%\reaper-mcp\token` on Windows. If REAPER or this server
+  complains about the token, close REAPER and run `reaper-mcp-setup` again.
+  Other programs on the computer cannot drive REAPER without the token (they
+  can still keep the port busy), but anything running as your own user can
+  read it.
+- If a tool says `"outcome": "uncertain"`, REAPER stopped answering in the
+  middle of it: usually a REAPER window or dialog is open and waiting for you
+  (Preferences, a plug-in window, "Save changes?"). Close it, then check the
+  project before retrying, since the change may or may not have been made.
 - `save_project`, `render_project`, `render_time_selection` and
   `render_stems` refuse to replace an existing file unless called with
   `overwrite=true` (saving without a path updates the project's own file; a

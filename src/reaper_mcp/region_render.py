@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from reaper_mcp.project_tools import markers_and_regions
-from reaper_mcp.reaper import RPR
+from reaper_mcp.reaper import RENDER_TIMEOUT_SECONDS, RPR, slow_calls
 from reaper_mcp.render_tools import (
     RENDER_PROJECT,
     get_project_string,
@@ -181,7 +181,9 @@ def _render_regions(directory: str, regions: list, *, pattern: str, selected_onl
 
     os.makedirs(directory, exist_ok=True)
     started = time.time()
-    RPR.Main_OnCommand(RENDER_PROJECT, 0)
+    # The call returns when the render ends: allow at least the caller's timeout.
+    with slow_calls(max(RENDER_TIMEOUT_SECONDS, timeout)):
+        RPR.Main_OnCommand(RENDER_PROJECT, 0)
     written, status = _await_render(targets, stall_timeout=stall_timeout, timeout=timeout)
     complete = status == "complete"
     result = {"success": complete, "output_directory": directory, **counts,

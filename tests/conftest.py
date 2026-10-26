@@ -5,6 +5,8 @@ import pytest
 from mcp.client import Client
 from mcp.types import TextContent
 
+from reaper_mcp import bridge_token
+from reaper_mcp import reaper as reaper_module
 from reaper_mcp.server import mcp
 from tests.fake_reaper import FakeReaper, install
 
@@ -29,6 +31,21 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "live" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def private_state(request, monkeypatch, tmp_path):
+    """Keeps every test away from the user's real bridge token (unless --live,
+    which needs it to reach REAPER) and from the connection state an earlier
+    test left behind."""
+    if not request.config.getoption("--live"):
+        monkeypatch.setattr(bridge_token, "config_dir", lambda: tmp_path / "reaper-mcp-config")
+        monkeypatch.setattr(reaper_module, "_connected", False)
+        monkeypatch.setattr(reaper_module, "_bridge_instance", None)
+    monkeypatch.setattr(reaper_module, "_lost", None)
+    monkeypatch.setattr(reaper_module, "_owed", [])
+    monkeypatch.setattr(reaper_module, "_owed_to", None)
+    monkeypatch.setattr(reaper_module, "_timeout", reaper_module.REQUEST_TIMEOUT_SECONDS)
 
 
 @pytest.fixture
