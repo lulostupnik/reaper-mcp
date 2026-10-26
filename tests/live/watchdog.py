@@ -33,6 +33,10 @@ POLL_SECONDS = 1.0
 # results window ("Finished in 0:00 ...") it reuses and does not always close.
 # Neither blocks a call; a modal (AXDialog) is always reported.
 TRANSIENT_PREFIXES = ("Rendering", "Finished in")
+# The evaluation reminder REAPER shows at startup ("About REAPER v7.69 ...",
+# button "Still Evaluating"). X11 reports it as a plain window, but while it is
+# up REAPER stopped answering the bridge (seen on 7.69, Linux): report it.
+BLOCKING_PREFIXES = ("About REAPER",)
 
 # One line per window: title, tab, subrole. REAPER's alerts ("Nothing to
 # render!") have an empty title and subrole AXDialog, so titles alone miss them.
@@ -91,14 +95,15 @@ def _x11_dialogs() -> dict[str, str]:
         # The main window: "song - REAPER v7.69 ...", or "REAPER v7.69 ..." untitled.
         if " - REAPER v" in title or title.startswith(("REAPER v", *TRANSIENT_PREFIXES)):
             continue
-        if "IsViewable" in _x11("xwininfo", "-id", window) and _x11_blocking(window):
+        if "IsViewable" in _x11("xwininfo", "-id", window) and (
+                title.startswith(BLOCKING_PREFIXES) or _x11_blocking(window)):
             found[title or f"untitled {window}"] = window
     return found
 
 
 def _x11_blocking(window: str) -> bool:
-    """A modal window or a dialog. Plain windows (the evaluation reminder,
-    the mixer, an FX window) do not block calls."""
+    """A modal window or a dialog. Plain windows (the mixer, an FX window)
+    do not block calls."""
     state = _x11_describe(window)
     return "_NET_WM_STATE_MODAL" in state or "_NET_WM_WINDOW_TYPE_DIALOG" in state
 

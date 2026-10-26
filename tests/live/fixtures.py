@@ -33,10 +33,10 @@ def _connect() -> reapy.Project:
 def reset(project: reapy.Project) -> None:
     for track in reversed(list(project.tracks)):
         track.delete()
-    for marker in list(project.markers):
-        marker.delete()
-    for region in list(project.regions):
-        region.delete()
+    # From the last index down: reapy's Marker.delete goes by enumeration
+    # index, which shifts as marks are deleted, and left some behind.
+    for i in reversed(range(RPR.CountProjectMarkers(0, 0, 0)[0])):
+        RPR.DeleteProjectMarkerByIndex(0, i)
     master = project.master_track
     for i in reversed(range(master.n_fxs)):
         master.fxs[i].delete()

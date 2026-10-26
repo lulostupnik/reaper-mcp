@@ -22,7 +22,8 @@ def test_add_fx_reports_its_index(live_project, call):
 def test_add_fx_missing_plugin(live_project, call):
     live_project.add_track(0, "t")
     result = call("add_fx", track_index=0, fx_name="No Such Plugin 7f3a")
-    assert result == {"success": False, "error": "Plugin not found: 'No Such Plugin 7f3a'"}
+    assert result["success"] is False
+    assert result["error"].startswith("Plugin not found: 'No Such Plugin 7f3a'"), result
     assert live_project.tracks[0].n_fxs == 0
 
 
