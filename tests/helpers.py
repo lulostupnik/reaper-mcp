@@ -11,7 +11,8 @@ WAV_24 = base64.b64encode(b"evaw\x18\x00\x01").decode()
 UNSET_RENDER_SETTINGS = {
     "RENDER_FILE": "", "RENDER_PATTERN": "", "RENDER_FORMAT": "",
     "RENDER_SRATE": 0.0, "RENDER_CHANNELS": 0.0, "RENDER_BOUNDSFLAG": 0.0,
-    "RENDER_ADDTOPROJ": 0.0,
+    "RENDER_ADDTOPROJ": 0.0, "RENDER_SETTINGS": 0.0, "RENDER_NORMALIZE": 0.0,
+    "RENDER_TAILFLAG": 0.0,
 }
 
 
@@ -32,6 +33,9 @@ def assert_rendered_and_deleted(reaper, rate=48000):
         "RENDER_CHANNELS": 2.0,
         "RENDER_BOUNDSFLAG": 1.0,
         "RENDER_ADDTOPROJ": 0.0,
+        "RENDER_SETTINGS": 0.0,
+        "RENDER_NORMALIZE": 0.0,
+        "RENDER_TAILFLAG": 0.0,
     }
 
 

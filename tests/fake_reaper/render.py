@@ -26,6 +26,18 @@ SOUNDFILE_FORMATS = {"wav": ("WAV", None), "flac": ("FLAC", "PCM_16"),
                      "ogg": ("OGG", "VORBIS"), "mp3": ("MP3", "MPEG_LAYER_III")}
 
 
+# RENDER_SETTINGS bits that render something other than the master mix to the
+# target (stems, the render matrix, selected items, selected tracks, razor edits):
+# the fake then writes nothing there, as REAPER writes other files.
+NOT_MASTER_MIX = 1 | 2 | 8 | 32 | 64 | 128 | 4096
+NORMALIZE = 1  # RENDER_NORMALIZE &1; the fake normalizes the peak to NORMALIZED_PEAK
+NORMALIZED_PEAK = 0.5
+# RENDER_TAILFLAG bit per RENDER_BOUNDSFLAG: custom, entire project, time selection.
+TAIL_BITS = {0: 1, 1: 2, 2: 4}
+# A master limiter (an enabled ReaLimit on the master track) holds every peak here.
+LIMITER_CEILING = 0.25
+
+
 class ModalDialog(BaseException):
     """REAPER would show a modal dialog here and block until someone clicks."""
 
@@ -39,24 +51,55 @@ def _format(config: str) -> tuple[str, str | None]:
     return extension, WAV_SUBTYPES[raw[4] if len(raw) > 4 else 32]
 
 
+def _number(reaper: FakeReaper, key: str, default: float = 0.0) -> int:
+    return int(float(reaper.project_info.get(key, default)))
+
+
 def _bounds(reaper: FakeReaper) -> tuple[float, float]:
-    flag = int(float(reaper.project_info.get("RENDER_BOUNDSFLAG", 1.0)))
+    flag = _number(reaper, "RENDER_BOUNDSFLAG", 1.0)
     if flag == 1:
-        return 0.0, reaper.length
-    if flag == 2:
-        return reaper.time_selection
-    start = float(reaper.project_info.get("RENDER_STARTPOS", 0.0))
-    return start, float(reaper.project_info.get("RENDER_ENDPOS", 0.0))
+        start, end = 0.0, reaper.length
+    elif flag == 2:
+        start, end = reaper.time_selection
+    else:
+        start = float(reaper.project_info.get("RENDER_STARTPOS", 0.0))
+        end = float(reaper.project_info.get("RENDER_ENDPOS", 0.0))
+    if _number(reaper, "RENDER_TAILFLAG") & TAIL_BITS.get(flag, 0):
+        end += _number(reaper, "RENDER_TAILMS", 1000.0) / 1000
+    return start, end
 
 
-def _signal(reaper: FakeReaper, seconds: float, rate: int) -> np.ndarray:
+def _signal(reaper: FakeReaper, start: float, end: float, rate: int) -> np.ndarray:
     """One sine per channel, from reaper.signal's (amplitude, frequency) pairs;
-    silence when reaper.silent. Rendered as PCM, so peaks past 1.0 clip."""
-    t = np.arange(int(rate * seconds)) / rate
+    silence when reaper.silent and past the end of the project (reaper.length).
+    An enabled ReaLimit on the master holds peaks at LIMITER_CEILING, and
+    RENDER_NORMALIZE &1 brings the peak to NORMALIZED_PEAK. Rendered as PCM, so
+    peaks past 1.0 clip."""
+    t = start + np.arange(int(rate * (end - start))) / rate
     if reaper.silent:
         return np.zeros((len(t), 2))
-    channels = [amplitude * np.sin(2 * np.pi * hz * t) for amplitude, hz in reaper.signal]
-    return np.clip(np.stack(channels, axis=1), -1.0, 1.0)
+    gain = _mix_gain(reaper)
+    channels = np.stack([gain * amplitude * np.sin(2 * np.pi * hz * t)
+                         for amplitude, hz in reaper.signal], axis=1)
+    channels[t >= reaper.length] = 0.0
+    peak = float(np.max(np.abs(channels))) if len(channels) else 0.0
+    if any(fx.enabled and fx.plugin == "ReaLimit" for fx in reaper.master.fxs) and peak:
+        channels *= min(1.0, LIMITER_CEILING / peak)
+        peak = min(peak, LIMITER_CEILING)
+    if _number(reaper, "RENDER_NORMALIZE") & NORMALIZE and peak:
+        channels *= NORMALIZED_PEAK / peak
+    return np.clip(channels, -1.0, 1.0)
+
+
+def _mix_gain(reaper: FakeReaper) -> float:
+    """1, unless reaper.mix_by_tracks: then the summed D_VOL of the tracks heard."""
+    if not reaper.mix_by_tracks:
+        return 1.0
+    tracks = [t for t in reaper.tracks if not t.info["B_MUTE"]]
+    soloed = [t for t in tracks if t.info["I_SOLO"]]
+    if any(t.info["I_SOLO"] for t in reaper.tracks):
+        tracks = soloed
+    return sum(t.info["D_VOL"] for t in tracks)
 
 
 def _regions(reaper: FakeReaper) -> list[tuple[float, float, str]]:
@@ -111,6 +154,8 @@ def render(reaper: FakeReaper) -> list[Path]:
     for path in paths:
         if path.exists():
             raise ModalDialog(f"Render Warning: {path.name} exists (overwrite / increment / cancel)")
+    if _number(reaper, "RENDER_SETTINGS") & NOT_MASTER_MIX:
+        return []
     return [_write(reaper, path, start, end)
             for path, (start, end) in zip(paths, spans, strict=True)]
 
@@ -119,7 +164,7 @@ def _write(reaper: FakeReaper, path: Path, start: float, end: float) -> Path:
     extension, subtype = _format(str(reaper.project_info.get("RENDER_FORMAT", "")))
     directory = path.parent
     rate = int(float(reaper.project_info.get("RENDER_SRATE", 48000)))
-    data = _signal(reaper, end - start, rate)
+    data = _signal(reaper, start, end, rate)
     if int(float(reaper.project_info.get("RENDER_CHANNELS", 2))) == 1:
         data = data.mean(axis=1)
     container, default_subtype = SOUNDFILE_FORMATS[extension]

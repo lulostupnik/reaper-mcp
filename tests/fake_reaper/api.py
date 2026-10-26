@@ -8,6 +8,7 @@ from pathlib import Path
 
 from reaper_mcp.reaper import ReaScriptAPI
 from tests.fake_reaper.envelopes import Envelopes
+from tests.fake_reaper.ext_state import ExtState
 from tests.fake_reaper.fx import FX
 from tests.fake_reaper.items import Items
 from tests.fake_reaper.markers import Markers
@@ -23,7 +24,8 @@ STRING_PROJECT_INFO = {"RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT", "PROJEC
                        "RECORD_PATH", "RECORD_FORMAT"}
 NUMERIC_PROJECT_INFO = {
     "RENDER_SRATE", "RENDER_CHANNELS", "RENDER_BOUNDSFLAG", "RENDER_ADDTOPROJ",
-    "RENDER_STARTPOS", "RENDER_ENDPOS",
+    "RENDER_STARTPOS", "RENDER_ENDPOS", "RENDER_SETTINGS", "RENDER_NORMALIZE",
+    "RENDER_TAILFLAG", "RENDER_TAILMS",
 }
 NEW_PROJECT_TAB = 41929  # New project tab, ignore default template
 NEW_PROJECT_TAB_FROM_TEMPLATE = 40859  # New project tab (from the default template)
@@ -57,7 +59,7 @@ def _sink_config(value: str) -> str:
 
 
 @dataclass
-class FakeReaper(Items, Session, Recording, Transport, Markers, Envelopes, FX):
+class FakeReaper(Items, Session, Recording, Transport, Markers, Envelopes, FX, ExtState):
     tmp: Path
     bpm: float = 120.0
     # bpm is in quarter notes, as REAPER displays it. The project-settings time
@@ -97,6 +99,10 @@ class FakeReaper(Items, Session, Recording, Transport, Markers, Envelopes, FX):
     # Seconds the glued item's length differs from the glued extent (REAPER may
     # round it to whole samples of the rendered file).
     glue_length_error: float = 0.0
+    # Renders follow the mixer: each channel of signal is scaled by the summed
+    # volume of the tracks heard (the soloed ones, if any; never muted ones).
+    # Off by default, so a render does not depend on which tracks exist.
+    mix_by_tracks: bool = False
     _pointer: int = 0
 
     def __post_init__(self) -> None:
@@ -106,6 +112,7 @@ class FakeReaper(Items, Session, Recording, Transport, Markers, Envelopes, FX):
         self.start_markers()
         self.start_recording_state()
         self.start_transport()
+        self.start_ext_state()
 
     def new_pointer(self, kind: str) -> str:
         self._pointer += 1
@@ -160,6 +167,7 @@ class FakeReaper(Items, Session, Recording, Transport, Markers, Envelopes, FX):
         self.project_name, self.project_file, self.dirty = "", "", False
         self.undo_steps, self.redo_steps = [], []
         self.project_info.pop("PROJECT_TITLE", None)
+        self.ext_state = {}
         if from_template:
             for name in self.default_template_tracks:
                 self.add_track(name)

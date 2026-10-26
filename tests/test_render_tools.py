@@ -272,3 +272,13 @@ def test_render_refuses_reaper_wildcards_in_the_file_name(reaper, call, tmp_path
 
 def test_stem_names_differ_case_insensitively():
     assert _stem_names(["Kick", "kick", "KICK"]) == ["Kick", "kick_2", "KICK_3"]
+
+
+def test_render_to_temp_file_over_a_span_restores_the_time_selection(reaper):
+    reaper.time_selection = (5.0, 6.0)
+    path = Path(render_to_temp_file(span=(1.0, 3.0)))
+    assert sf.info(str(path)).duration == pytest.approx(2.0)
+    assert reaper.render_settings[0]["RENDER_BOUNDSFLAG"] == 2.0
+    assert reaper.time_selection == (5.0, 6.0)
+    assert reaper.project_info["RENDER_BOUNDSFLAG"] == 0.0  # put back
+    path.unlink()

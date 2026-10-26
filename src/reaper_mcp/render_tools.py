@@ -20,6 +20,8 @@ caller passes overwrite=True, in which case it is removed first.
 import base64
 import tempfile
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from reaper_mcp.reaper import (
@@ -44,7 +46,15 @@ WAV_BIT_DEPTHS = (16, 24, 32)  # 32 renders as float
 SOLO_IN_PLACE = 2
 # The render settings _render changes, saved and restored around temp renders.
 TEMP_RENDER_STRINGS = ("RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT")
-TEMP_RENDER_NUMBERS = ("RENDER_SRATE", "RENDER_CHANNELS", "RENDER_BOUNDSFLAG", "RENDER_ADDTOPROJ")
+TEMP_RENDER_NUMBERS = ("RENDER_SRATE", "RENDER_CHANNELS", "RENDER_BOUNDSFLAG", "RENDER_ADDTOPROJ",
+                       "RENDER_SETTINGS", "RENDER_NORMALIZE", "RENDER_TAILFLAG")
+# What a temp render needs whatever the user last chose in the render dialog:
+# RENDER_SETTINGS 0 = the master mix (not stems, the render matrix or selected
+# tracks/items, which would write other files or other tracks), RENDER_NORMALIZE
+# 0 = no normalizing, limiting, fades or silence trimming (they would hide level
+# changes), RENDER_TAILFLAG 0 = no tail past the end of the range.
+TEMP_RENDER_PLAIN = {"RENDER_SETTINGS": 0.0, "RENDER_NORMALIZE": 0.0, "RENDER_TAILFLAG": 0.0}
+PLAYING, RECORDING = 1, 4  # GetPlayState bits
 
 
 def get_project_string(key: str) -> str:
@@ -149,25 +159,70 @@ def _require_content(project) -> None:
         raise RuntimeError("the project is empty; there is nothing to render")
 
 
-def render_to_temp_file(sample_rate: int = 48000) -> str:
+def transport_error() -> str | None:
+    """Why REAPER cannot render for analysis now, or None when it is stopped."""
+    state = RPR.GetPlayState()
+    if state & RECORDING:
+        return "REAPER is recording; stop the recording first, then try again"
+    if state & PLAYING:
+        return "REAPER is playing; stop playback first, then try again"
+    return None
+
+
+def require_stopped() -> None:
+    """Refuse a temp render while REAPER plays or records: rendering would cut
+    into the recording, and soloing for it would change what the user hears."""
+    error = transport_error()
+    if error is not None:
+        raise RuntimeError(error)
+
+
+def render_to_temp_file(sample_rate: int = 48000,
+                        span: tuple[float, float] | None = None) -> str:
     """
     Render the current project to a temporary WAV file and return its path.
     Used by analysis and mastering tools. Caller is responsible for deleting the file.
+    span: (start, end) in seconds to render only that range (through the time
+    selection, which is put back afterwards); None renders the whole project.
     The project's own render settings are put back afterwards, so analysing
     changes nothing in the project.
     """
-    _require_content(get_project())
+    project = get_project()
+    _require_content(project)
+    require_stopped()
     target = Path(tempfile.gettempdir()) / f"reaper-mcp-{uuid.uuid4().hex}.wav"
     strings, numbers = save_render_settings(TEMP_RENDER_STRINGS, TEMP_RENDER_NUMBERS)
     try:
-        _render(target, format="wav", sample_rate=sample_rate, bit_depth=24, channels=2,
-                bounds=ENTIRE_PROJECT)
+        for key, value in TEMP_RENDER_PLAIN.items():
+            RPR.GetSetProjectInfo(0, key, value, True)
+        with _time_selection(project, span):
+            _render(target, format="wav", sample_rate=sample_rate, bit_depth=24, channels=2,
+                    bounds=ENTIRE_PROJECT if span is None else TIME_SELECTION)
     finally:
         errors = restore_render_settings(strings, numbers)
     if errors:
         target.unlink(missing_ok=True)
         raise RuntimeError("render settings not restored: " + "; ".join(errors))
     return str(target)
+
+
+@contextmanager
+def _time_selection(project, span: tuple[float, float] | None) -> Iterator[None]:
+    """The time selection set to span for the body, then put back (owed to the
+    next tool call when a call to REAPER was lost); nothing when span is None."""
+    if span is None:
+        yield
+        return
+    selection = project.time_selection  # a reapy TimeSelection, not a tuple
+    previous = (selection.start, selection.end)
+    project.time_selection = span
+    try:
+        yield
+    finally:
+        if lost_call() is not None:
+            owe_on_reconnect(lambda: setattr(project, "time_selection", previous))
+        else:
+            project.time_selection = previous
 
 
 def _rendered(target: Path) -> dict:

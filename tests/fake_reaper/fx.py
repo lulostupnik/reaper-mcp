@@ -6,7 +6,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import TYPE_CHECKING
 
-from tests.fake_reaper.objects import INSTALLED_FX, PRESETS, FXState, display
+from tests.fake_reaper.objects import INSTALLED_FX, PRESETS, REAPER_PARAMS, FXState, display
 
 if TYPE_CHECKING:
     from tests.fake_reaper.api import FakeReaper
@@ -34,6 +34,19 @@ class FX:
 
     def TrackFX_GetParamNormalized(self: FakeReaper, track: str, fx: int, param: int) -> float:
         return self._fx(track, fx).values[param]
+
+    def TrackFX_GetParamName(self: FakeReaper, track, fx, param, buf, size) -> list:
+        state = self._fx(track, fx)
+        return [True, track, fx, param, INSTALLED_FX[state.plugin][param], size]
+
+    def TrackFX_GetParamFromIdent(self: FakeReaper, track: str, fx: int, ident: str) -> int:
+        """":bypass", ":wet", ":delta": REAPER's own parameters at the end of
+        the FX (only plugins that list them, see REAPER_PARAMS); else -1."""
+        names = INSTALLED_FX[self._fx(track, fx).plugin]
+        own = [":" + name.lower() for name in REAPER_PARAMS]
+        if tuple(names[-len(own):]) != REAPER_PARAMS or ident not in own:
+            return -1
+        return len(names) - len(own) + own.index(ident)
 
     def TrackFX_SetParamNormalized(self: FakeReaper, track, fx, param, value) -> bool:
         self._fx(track, fx).values[param] = value

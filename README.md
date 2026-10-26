@@ -1,6 +1,6 @@
 # REAPER MCP Server
 
-A Model Context Protocol (MCP) server that enables AI agents to control REAPER DAW — 61 tools covering project management, tracks, track templates, MIDI, FX, mixing, mastering, rendering, and audio analysis.
+A Model Context Protocol (MCP) server that enables AI agents to control REAPER DAW — 126 tools covering project management, recording, tracks and routing, templates, MIDI, items and takes, FX, mixing, automation, markers, mastering, rendering, audio analysis, per-track measurement and A/B mix snapshots — plus beginner guides served as MCP prompts. Every change to the mix or the project's contents is one undo step (the exceptions, such as transport, saving, rendering and saving or deleting mix snapshots, are listed under [Context and Undo](#context-and-undo)).
 
 ## Requirements
 
@@ -109,12 +109,14 @@ reaper-mcp-server          # start the server
 reaper-mcp-server --debug  # with debug logging
 ```
 
-## Tools (98)
+## Tools (126)
 
 ### Context and Undo
 `get_context` `get_project_summary` `undo` `redo` `get_undo_state`
 
 Every tool that changes the project is one named REAPER undo step ("MCP: Set track volume (track_index=0, volume_db=-6)"), so `undo` or Ctrl+Z takes back exactly one tool call; a call that fails is named "(failed)", and a bad track index is refused before any step is made. `undo` and `redo` only act on these "MCP: " steps unless called with `include_manual_steps=true` (so a recorded take is not removed by accident), and never while recording. Tools are annotated as read-only or changing (MCP `readOnlyHint` / `destructiveHint` / `idempotentHint`), list and get tools report track and item GUIDs, and `delete_track`, `remove_fx` and `remove_send` accept a track GUID instead of an index. The project summary is also the resource `reaper://project/summary`.
+
+Not undo steps, because they are not edits Ctrl+Z can take back: the transport (play, record, stop, cursor, time selection, loop, punch mode, metronome), creating, saving and opening projects and templates, rendering, saving or deleting mix snapshots, and `undo`/`redo` themselves.
 
 ### Project Management
 `create_project` `load_project` `save_project` `get_project_info` `set_tempo` `set_time_signature` `set_cursor_position` `play_project` `stop_transport`
@@ -174,6 +176,24 @@ Markers and regions are named by the number REAPER shows on them (not their plac
 
 ### Analysis
 `analyze_loudness` `analyze_dynamics` `analyze_frequency_spectrum` `analyze_stereo_field` `analyze_transients` `detect_clipping`
+
+These render the whole mix to a temporary file and analyse it; File > Render settings are left as they were. The temporary render is always the plain master mix (no stems, normalization, limiting or render tail, whatever the render dialog last had), and it is refused while REAPER is playing or recording.
+
+### Measurement and A/B
+`measure_track` `compare_measurements` `save_mix_snapshot` `list_mix_snapshots` `recall_mix_snapshot` `compare_mix_snapshots` `delete_mix_snapshot`
+
+`measure_track` gives one track's integrated loudness (LUFS), RMS and sample peak (dBFS), over the whole project or a time range, by rendering it soloed to a temporary file: after its FX, volume and pan, including what it sends to (a reverb track) and the master volume. The master track's FX are bypassed for the measurement (a limiter there would hide a fader move) unless `include_master_fx=true`. Solo, mute, master FX, the time selection and render settings are put back afterwards; a muted track is measured as if unmuted. A range is cut at the end of the project. `compare_measurements` takes two whole `measure_track` replies (before and after a change) and an expected change ("3 dB louder") and answers `verified`, `not_verified` or `cannot_verify` (different tracks, ranges or master FX settings, missing track or range, silence, too short for LUFS), never a guess.
+
+A mix snapshot holds every track's and the master's volume, pan, mute, solo, and each FX's on/off state and parameter values (plug-ins with more than 128 parameters keep only their on/off state, since each parameter is a call to REAPER). Sends are not part of a snapshot. Up to 20 snapshots are stored inside the project (REAPER's project extension data), so save the project to keep them. `recall_mix_snapshot` is one undo step; it checks the snapshot first (values in range), finds tracks by GUID (moved tracks still match), FX by position and name, reports tracks or FX that are gone, and lists FX added since, which it leaves alone (`bypass_fx`, `remove_fx` or `undo` take those back). `compare_mix_snapshots` lists what differs between two snapshots, or between one and the current mix (`b="current"`, the default), with FX values as the plug-in displays them when it is still there; an FX with many changed parameters gets one summary row unless `detail=true`. Saving or deleting a snapshot changes nothing in the mix and is not an undo step.
+
+## Prompts
+
+Short guides for beginners, served as MCP prompts (in Claude Desktop, under the "+" / attachment menu; in Claude Code, as `/mcp__reaper__<name>`). Each tells the assistant which tools to call, in which order, and the levels to aim for:
+
+- `record_vocals_scarlett_solo`: set up a vocal track with a Focusrite Scarlett Solo (input 1, 48V for condensers, Direct Monitor), check the input level (peaks around -12 dBFS) and record.
+- `gain_staging_check`: recording levels, then each track's and the mix's peaks, with fader changes verified by measurement.
+- `critique_my_mix`: snapshot the mix, run the analysis tools and give at most three suggestions; nothing is changed without asking.
+- `basic_vocal_chain`: EQ (high-pass), compression and a reverb send on a vocal with REAPER's own plug-ins, measured before and after.
 
 ## Contributing
 

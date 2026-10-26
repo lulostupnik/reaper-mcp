@@ -310,8 +310,21 @@ def test_analysis_leaves_the_users_render_settings_alone(reaper, call, tool):
     the project's own render settings are put back."""
     mine = {"RENDER_FILE": "/home/me/mixes", "RENDER_PATTERN": "$project-final",
             "RENDER_FORMAT": "bDNwbQ==", "RENDER_SRATE": 44100.0, "RENDER_CHANNELS": 1.0,
-            "RENDER_BOUNDSFLAG": 2.0, "RENDER_ADDTOPROJ": 1.0}
+            "RENDER_BOUNDSFLAG": 2.0, "RENDER_ADDTOPROJ": 1.0,
+            "RENDER_SETTINGS": 130.0, "RENDER_NORMALIZE": 65.0, "RENDER_TAILFLAG": 6.0}
     reaper.project_info.update(mine)
     assert call(tool)["success"] is True
     assert reaper.project_info == mine
-    assert reaper.render_settings[0]["RENDER_BOUNDSFLAG"] == 1.0
+    [used] = reaper.render_settings
+    assert used["RENDER_BOUNDSFLAG"] == 1.0
+    # The master mix, not normalized, no tail: whatever the dialog last had.
+    assert (used["RENDER_SETTINGS"], used["RENDER_NORMALIZE"], used["RENDER_TAILFLAG"]) == (
+        0.0, 0.0, 0.0)
+
+
+@pytest.mark.parametrize("transport", ["playing", "recording"])
+def test_analysis_refuses_to_render_while_the_transport_runs(reaper, call, transport):
+    reaper.transport = transport
+    result = call("analyze_loudness")
+    assert result["success"] is False and f"REAPER is {transport}" in result["error"]
+    assert reaper.renders == []

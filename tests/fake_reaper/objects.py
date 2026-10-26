@@ -19,7 +19,11 @@ if TYPE_CHECKING:
 
 # Presets each fake plugin ships with.
 PRESETS = {"ReaEQ": ["Bright", "Warm"], "ReaComp": ["Gentle"], "ReaLimit": [], "ReaSynth": [],
-           "ReaGate": []}
+           "ReaGate": [], "ReaDelay": []}
+
+# REAPER (6.37+) adds these three parameters at the end of every FX. The fake's
+# plugins leave them out to keep their lists short, except ReaDelay.
+REAPER_PARAMS = ("Bypass", "Wet", "Delta")
 
 # REAPER's values for track settings a new track's info dict leaves out.
 TRACK_DEFAULTS = {"I_RECARM": 0.0, "I_RECINPUT": 0.0, "I_RECMON": 0.0, "I_RECMODE": 0.0,
@@ -33,6 +37,7 @@ INSTALLED_FX = {
     "ReaLimit": ["Threshold", "Ceiling", "Release"],
     "ReaSynth": ["Volume", "Tuning"],
     "ReaGate": ["Gain", "Bypass"],
+    "ReaDelay": ["Wet", "Dry", "Length", *REAPER_PARAMS],
 }
 
 

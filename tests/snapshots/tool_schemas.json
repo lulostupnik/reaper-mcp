@@ -427,6 +427,77 @@
       "type": "object"
     }
   },
+  "compare_measurements": {
+    "description": "Compare two measure_track replies (before and after a mix change) and say\nhonestly whether the change did what was intended. before/after: the whole\nmeasure_track replies, unchanged. expected_change_db: e.g.\n3 for \"3 dB louder\", -2 for \"2 dB quieter\"; leave it out to just report the\nchanges. metric: integrated_lufs (default; how loud it sounds), rms_db or\nsample_peak_dbfs. verdict: \"verified\" (within tolerance_db of the expected\nchange), \"not_verified\", or \"cannot_verify\" (different tracks or ranges, or no\nreading, e.g. silence). Changes nothing in REAPER.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "additionalProperties": true,
+          "title": "After",
+          "type": "object"
+        },
+        "before": {
+          "additionalProperties": true,
+          "title": "Before",
+          "type": "object"
+        },
+        "expected_change_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Change Db"
+        },
+        "metric": {
+          "default": "integrated_lufs",
+          "title": "Metric",
+          "type": "string"
+        },
+        "tolerance_db": {
+          "default": 1.0,
+          "title": "Tolerance Db",
+          "type": "number"
+        }
+      },
+      "required": [
+        "before",
+        "after"
+      ],
+      "title": "compare_measurementsArguments",
+      "type": "object"
+    }
+  },
+  "compare_mix_snapshots": {
+    "description": "What differs between two mix snapshots, track by track: volume, pan, mute,\nsolo, FX on/off and FX parameters (shown as the plug-in displays them when\nthe FX is still there). b defaults to \"current\", the mix as it is now, so\ncompare_mix_snapshots(a=\"before EQ\") shows what changed since that save.\nAn FX with many changed parameters (a preset change) is summed up in one\nrow; detail=true lists every parameter. At most 100 rows are listed.",
+    "input_schema": {
+      "properties": {
+        "a": {
+          "title": "A",
+          "type": "string"
+        },
+        "b": {
+          "default": "current",
+          "title": "B",
+          "type": "string"
+        },
+        "detail": {
+          "default": false,
+          "title": "Detail",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a"
+      ],
+      "title": "compare_mix_snapshotsArguments",
+      "type": "object"
+    }
+  },
   "copy_fx": {
     "description": "Copy an FX, with its current settings, to a track (the same track works too).\nto_position: the copy's place in that chain, 0 = first; default: the end.",
     "input_schema": {
@@ -774,6 +845,22 @@
         "marker"
       ],
       "title": "delete_markerArguments",
+      "type": "object"
+    }
+  },
+  "delete_mix_snapshot": {
+    "description": "Delete a saved mix snapshot (the mix itself is not touched).",
+    "input_schema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "delete_mix_snapshotArguments",
       "type": "object"
     }
   },
@@ -1452,6 +1539,14 @@
       "type": "object"
     }
   },
+  "list_mix_snapshots": {
+    "description": "List the mix snapshots saved in this project, oldest first.",
+    "input_schema": {
+      "properties": {},
+      "title": "list_mix_snapshotsArguments",
+      "type": "object"
+    }
+  },
   "list_project_templates": {
     "description": "List the project templates (.RPP files in REAPER's ProjectTemplates folder,\nsubfolders included) that new_project_from_template can start from.",
     "input_schema": {
@@ -1601,6 +1696,58 @@
         "project_path"
       ],
       "title": "load_projectArguments",
+      "type": "object"
+    }
+  },
+  "measure_track": {
+    "description": "Measure how loud one track is, after its FX and fader: integrated loudness\n(LUFS), RMS level and sample peak (dBFS), by rendering it soloed to a temp\nfile. Whole project by default, or start/end in seconds (a 20-30 s stretch,\ne.g. the chorus, is much quicker than a whole song). The solo and mute\nbuttons are left exactly as they were. Anything the track sends to (a reverb\ntrack) and the master volume are included. The master track's FX (a limiter)\nare bypassed for the measurement and switched back on afterwards, so a fader\nmove shows up 1:1; include_master_fx=true measures through them.\ntrack_index: the track's index, or its GUID from list_tracks.\nKeep the whole reply: give it to compare_measurements with a later one to\ncheck a change (\"is the vocal 3 dB louder now?\"). Refused while REAPER is\nplaying or recording.",
+    "input_schema": {
+      "properties": {
+        "end": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "include_master_fx": {
+          "default": false,
+          "title": "Include Master Fx",
+          "type": "boolean"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "track_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Track Index"
+        }
+      },
+      "required": [
+        "track_index"
+      ],
+      "title": "measure_trackArguments",
       "type": "object"
     }
   },
@@ -1889,6 +2036,27 @@
     "input_schema": {
       "properties": {},
       "title": "play_projectArguments",
+      "type": "object"
+    }
+  },
+  "recall_mix_snapshot": {
+    "description": "Put the mixer back the way a saved snapshot has it: volume, pan, mute, solo,\nand (include_fx=true) the on/off state and parameters of each FX that was\nthere when it was saved. Only that: FX, sends and tracks added since stay as\nthey are (bypass_fx/remove_fx, or undo, take those back), and are listed in\nthe reply. Tracks are found by GUID, so moved tracks are still matched;\ntracks deleted since are reported. The snapshot is checked first and nothing\nis changed if any value in it is out of range. One undo step: undo takes the\nwhole recall back.",
+    "input_schema": {
+      "properties": {
+        "include_fx": {
+          "default": true,
+          "title": "Include Fx",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "recall_mix_snapshotArguments",
       "type": "object"
     }
   },
@@ -2264,6 +2432,27 @@
         "end"
       ],
       "title": "render_time_selectionArguments",
+      "type": "object"
+    }
+  },
+  "save_mix_snapshot": {
+    "description": "Save the mixer as it is now under a name (\"before EQ\", \"mix A\"): every\ntrack's and the master's volume, pan, mute, solo, and each FX's on/off\nstate and parameter values. Saved inside the project, so it is kept when\nthe project is saved. Recall it with recall_mix_snapshot, compare with\ncompare_mix_snapshots. A name already used is only replaced with\noverwrite=true. Not an undo step: saving changes nothing in the mix.",
+    "input_schema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "save_mix_snapshotArguments",
       "type": "object"
     }
   },

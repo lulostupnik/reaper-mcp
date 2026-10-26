@@ -20,10 +20,12 @@ from reaper_mcp import (
     item_tools,
     marker_tools,
     mastering_tools,
+    measure_tools,
     midi_tools,
     mixing_tools,
     project_template_tools,
     project_tools,
+    prompts,
     reaper,
     record_setup_tools,
     recording_tools,
@@ -31,6 +33,7 @@ from reaper_mcp import (
     render_tools,
     routing_tools,
     silence_tools,
+    snapshot_tools,
     take_tools,
     template_tools,
     track_tools,
@@ -128,6 +131,8 @@ for _module in (
     region_render,
     mastering_tools,
     analysis_tools,
+    measure_tools,
+    snapshot_tools,
     template_tools,
     project_template_tools,
 ):
@@ -138,6 +143,10 @@ for _module in (
             description=inspect.cleandoc(_tool.__doc__ or ""),
             annotations=kind_of(_tool).annotations,
         )(_serialized(as_undo_step(_tool)))
+
+
+for _prompt in prompts.PROMPTS:
+    _server.prompt(description=inspect.cleandoc(_prompt.__doc__ or ""))(_prompt)
 
 
 @_server.resource(

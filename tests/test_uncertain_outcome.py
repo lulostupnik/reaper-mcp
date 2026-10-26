@@ -137,7 +137,8 @@ def test_a_read_only_tool_that_loses_a_request_says_it_changed_nothing(reaper, c
 def test_an_analysis_whose_render_is_lost_puts_the_render_settings_back_later(reaper, call):
     mine = {"RENDER_FILE": "/home/me/mixes", "RENDER_PATTERN": "$project-final",
             "RENDER_FORMAT": "bDNwbQ==", "RENDER_SRATE": 44100.0, "RENDER_CHANNELS": 1.0,
-            "RENDER_BOUNDSFLAG": 2.0, "RENDER_ADDTOPROJ": 1.0}
+            "RENDER_BOUNDSFLAG": 2.0, "RENDER_ADDTOPROJ": 1.0,
+            "RENDER_SETTINGS": 130.0, "RENDER_NORMALIZE": 65.0, "RENDER_TAILFLAG": 6.0}
     reaper.project_info.update(mine)
     reaper.lose_request("Main_OnCommand", applied=True)
 
