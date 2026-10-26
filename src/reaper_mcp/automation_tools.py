@@ -22,8 +22,9 @@ SAME_TIME = 1e-6  # seconds
 # A change needs some ramp: points at one time would make a slope from the
 # previous point instead of a step.
 MIN_RAMP = 0.001  # seconds
-# REAPER's volume envelopes go up to +6 dB by default (Preferences > Editing
-# behavior > Envelope display), so a point above that may be clipped there.
+# REAPER's volume envelope lane shows up to +6 dB by default (Preferences >
+# Editing behavior > Envelope display). Points above it are still played as
+# set (+20 dB was heard in a render on 7.69); only the lane may not show them.
 VOLUME_ENVELOPE_MAX_DB = 6.0
 
 
@@ -263,8 +264,9 @@ def _over_range(*, track_index: int, kind: str, start: float, end: float, ramp_s
     result = {"success": True, "track_index": track_index, "envelope": kind,
               "start": start, "end": end, "points": reported(curve.points())}
     if kind == "volume" and any(v > VOLUME_ENVELOPE_MAX_DB for v in values):
-        result["warning"] = (f"Some points are above +{VOLUME_ENVELOPE_MAX_DB:g} dB, where "
-                             "REAPER's volume envelope may stop; raise the track fader instead")
+        result["note"] = (f"Some points are above +{VOLUME_ENVELOPE_MAX_DB:g} dB: REAPER plays "
+                          "them as set, but its envelope lane may draw them at the top of "
+                          "its range (Preferences > Editing behavior > Envelope display)")
     if kind == "pan" and abs(track.get_info_value("D_PAN")) > SAME_TIME:
         result["note"] = ("The track's pan knob is not centered, and REAPER combines it "
                           "with the pan automation, so the heard pan differs; center the "

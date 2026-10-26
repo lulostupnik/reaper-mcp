@@ -183,9 +183,11 @@ def test_set_volume_over_range_at_the_start_has_no_ramp_before(reaper, call, vox
         (0.0, -3.0), (2.0, -3.0), (2.05, 0.0)]
 
 
-def test_set_volume_over_range_warns_above_the_envelope_top(reaper, call, vox):
+def test_set_volume_over_range_notes_points_above_the_envelope_lane(reaper, call, vox):
+    """REAPER plays them as set (+20 dB heard on 7.69): a note, not a warning."""
     result = call("set_volume_over_range", track_index=1, start=1.0, end=2.0, change_db=9.0)
-    assert "above +6 dB" in result["warning"]
+    assert "above +6 dB" in result["note"] and "plays them as set" in result["note"]
+    assert "warning" not in result
 
 
 def test_set_volume_over_range_refuses_bad_ranges(reaper, call, vox):
