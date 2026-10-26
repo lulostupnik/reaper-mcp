@@ -190,7 +190,7 @@ def set_fx_parameter_by_name(
     except (LookupError, ValueError) as e:
         return {"success": False, "error": str(e)}
     RPR.TrackFX_SetParamNormalized(track.id, fx_index, param_index, normalized)
-    shown = fx_values.displayed(track.id, fx_index, param_index)
+    shown = fx_values.shown_text(track.id, fx_index, param_index)
     parsed = fx_values.parse_value(value)
     exact = (fx_values.reached(shown, parsed[0]) if parsed
              else shown.strip().casefold() == value.strip().casefold())

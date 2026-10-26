@@ -166,12 +166,24 @@ def test_list_fx_presets_keeps_the_loaded_preset_and_tweaks(reaper, call):
     assert track.name == "Vox"
 
 
-def test_list_fx_presets_reports_settings_it_could_not_restore(reaper, call, monkeypatch):
-    _chain_track(reaper)
-    monkeypatch.setattr(reascript_api, "TrackFX_SetParamNormalized", lambda *a: True)
+def test_list_fx_presets_loads_them_into_a_bypassed_copy_only(reaper, call, monkeypatch):
+    """A preset can change more than parameter values (ReaEQ's change its number
+    of bands; seen on 7.69), so the plugin itself never gets one loaded."""
+    track = _chain_track(reaper)
+    chain = [(fx.plugin, list(fx.values), fx.enabled) for fx in track.fxs]
+    loaded_into = []
+    original = reascript_api.TrackFX_SetPresetByIndex
+
+    def recording(pointer, fx, index):
+        loaded_into.append((fx, reaper.tracks[0].fxs[fx].enabled))
+        return original(pointer, fx, index)
+
+    monkeypatch.setattr(reascript_api, "TrackFX_SetPresetByIndex", recording)
     result = call("list_fx_presets", track_index=0, fx_index=0)
-    assert result["settings_restored"] is False
-    assert "use undo" in result["warning"]
+    assert result["presets"] == ["Bright", "Warm"] and result["settings_restored"] is True
+    assert loaded_into == [(len(chain), False)] * 2  # the bypassed copy at the end
+    assert [(fx.plugin, fx.values, fx.enabled) for fx in track.fxs] == chain
+    assert track.fxs[0].preset == ""
 
 
 def test_list_fx_presets_of_a_plugin_without_any(reaper, call):

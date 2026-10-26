@@ -1,11 +1,15 @@
 """FX parameter values in the units a plug-in displays ("-3 dB", "300 Hz", "2 s").
 
-REAPER can format any normalized value (0..1) the way the plug-in would show
-it (TrackFX_FormatParamValueNormalized) without setting it, so a value given
-in display units is found by bisection over that formatter: no knowledge of
-each plug-in's curve is needed. This only works for parameters whose display
-is a number that rises or falls steadily across the range, which covers
-gains, frequencies and times; switches ("On"/"Off") are matched by text.
+A value given in display units is found by bisection over what the plug-in
+displays: no knowledge of each plug-in's curve is needed. Each step sets the
+parameter and reads the display back (the value it had is put back after),
+because REAPER's formatter for a value not set (TrackFX_FormatParamValueNormalized)
+does not always follow the plug-in's curve: for ReaEQ's band gains it said
+"0.0 dB" where ReaEQ then showed -6.0 (REAPER 7.69). The formatter is still
+used for the unit, which the display often leaves out ("20.0" for "20.0 ms").
+This only works for parameters whose display is a number that rises or falls
+steadily across the range, which covers gains, frequencies and times;
+switches ("On"/"Off") are matched by text.
 """
 
 import math
@@ -66,8 +70,22 @@ def displayed(track: Pointer, fx: int, param: int) -> str:
     return RPR.TrackFX_GetFormattedParamValue(track, fx, param, "", FORMAT_BUFFER)[4]
 
 
+def shown_text(track: Pointer, fx: int, param: int) -> str:
+    """What the plug-in displays now, with the formatter's unit added when the
+    display has none ("20.0" -> "20.0 ms")."""
+    text = displayed(track, fx, param)
+    match = VALUE.match(text.replace("−", "-"))
+    if match is None or match["unit"]:
+        return text
+    value = RPR.TrackFX_GetParamNormalized(track, fx, param)
+    unit = VALUE.match(format_normalized(track, fx, param, value=value).replace("−", "-"))
+    return f"{text.strip()} {unit['unit']}" if unit and unit["unit"] else text
+
+
 def _shown(track: Pointer, fx: int, param: int, *, value: float) -> float:
-    parsed = parse_value(format_normalized(track, fx, param, value=value))
+    """The number the plug-in displays (base unit) once the parameter is value."""
+    RPR.TrackFX_SetParamNormalized(track, fx, param, value)
+    parsed = parse_value(shown_text(track, fx, param))
     if parsed is None:
         raise ValueError("the parameter does not display a number")
     return parsed[0]
@@ -86,7 +104,16 @@ def check_dimension(track: Pointer, fx: int, param: int, *, dimension: str) -> N
 
 def bisect_to(track: Pointer, fx: int, param: int, *, target: float) -> float:
     """The normalized value whose display first reaches target (in the base
-    unit), rising or falling; a target past the range lands on its end."""
+    unit), rising or falling; a target past the range lands on its end. The
+    parameter is left as it was."""
+    original = RPR.TrackFX_GetParamNormalized(track, fx, param)
+    try:
+        return _bisect(track, fx, param, target=target)
+    finally:
+        RPR.TrackFX_SetParamNormalized(track, fx, param, original)
+
+
+def _bisect(track: Pointer, fx: int, param: int, *, target: float) -> float:
     rising = _shown(track, fx, param, value=0.25) < _shown(track, fx, param, value=0.75)
 
     def short(value: float) -> bool:
@@ -111,7 +138,7 @@ def set_to_display(track: Pointer, fx: int, param: int, *, target: float,
     dimension); returns what it then displays."""
     check_dimension(track, fx, param, dimension=dimension)
     RPR.TrackFX_SetParamNormalized(track, fx, param, bisect_to(track, fx, param, target=target))
-    return displayed(track, fx, param)
+    return shown_text(track, fx, param)
 
 
 def match_text(track: Pointer, fx: int, param: int, *, text: str) -> tuple[float | None, list[str]]:

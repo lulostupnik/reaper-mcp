@@ -1453,7 +1453,7 @@
     }
   },
   "list_fx_presets": {
-    "description": "List the presets of an FX plugin by name (in order: a preset's place in the\nlist, from 0, is the preset_index load_fx_preset takes), and the one showing now.\nOnly call it when the user wants to pick a preset: REAPER can only name a\npreset by loading it, so each preset is loaded in turn and the plugin is then\nput back as it was (its preset and parameters). It is one undo step, in case a\nplugin keeps more state (e.g. a loaded sample); REAPER's preset menu may still\nname the last preset looked at.",
+    "description": "List the presets of an FX plugin by name (in order: a preset's place in the\nlist, from 0, is the preset_index load_fx_preset takes), and the one showing now.\nOnly call it when the user wants to pick a preset: REAPER can only name a\npreset by loading it, so each preset is loaded in turn into a bypassed copy\nof the plugin, which is then removed; the plugin itself is not touched. It\nis one undo step.",
     "input_schema": {
       "properties": {
         "fx_index": {

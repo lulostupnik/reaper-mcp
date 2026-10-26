@@ -239,13 +239,22 @@ def test_compare_two_saved_snapshots_and_either_order(mix, call):
     call("save_mix_snapshot", name="A")
     mix.tracks[0].fxs[0].values[0] = 1.0  # ReaEQ Gain-Low: +24 dB in the fake
     call("save_mix_snapshot", name="B")
-    mix.tracks[0].fxs[0].values[0] = 0.0
+    mix.tracks[0].fxs[0].values[0] = 0.25
     saved = call("compare_mix_snapshots", a="A", b="B")
     [row] = saved["tracks"][0]["differences"]
     assert row == {"setting": "VST: ReaEQ (Cockos): Gain-Low", "a": 0.5, "b": 1.0}
     live_first = call("compare_mix_snapshots", a="current", b="A")
     [row] = live_first["tracks"][0]["differences"]
-    assert row == {"setting": "VST: ReaEQ (Cockos): Gain-Low", "a": "-inf", "b": "+0.0 dB"}
+    # REAPER's formatter does not follow ReaEQ's gain curve (the fake's neither):
+    # normalized values rather than wrong dB.
+    assert row == {"setting": "VST: ReaEQ (Cockos): Gain-Low", "a": 0.25, "b": 0.5}
+
+
+def test_compare_shows_values_as_the_plugin_displays_them(mix, call):
+    call("save_mix_snapshot", name="A")
+    mix.tracks[0].fxs[0].values[1] = 0.25  # ReaEQ Freq-Low, whose formatter agrees
+    [row] = call("compare_mix_snapshots", a="current", b="A")["tracks"][0]["differences"]
+    assert row == {"setting": "VST: ReaEQ (Cockos): Freq-Low", "a": "112.5 Hz", "b": "632.5 Hz"}
 
 
 def test_compare_reports_added_and_removed_tracks_and_fx(mix, call, reaper):

@@ -1,6 +1,13 @@
 """Moving and copying FX within and between tracks, and listing an FX's presets."""
 
-from reaper_mcp.fx_presets import MAX_PRESETS, current_preset, preset_names, restoring_params
+from reaper_mcp.fx_presets import (
+    MAX_PRESETS,
+    current_preset,
+    param_values,
+    preset_names,
+    same_settings,
+    scratch_copy,
+)
 from reaper_mcp.fx_tools import fx_index_error
 from reaper_mcp.reaper import RPR, get_project
 from reaper_mcp.undo import edits
@@ -78,10 +85,9 @@ def list_fx_presets(*, track_index: int, fx_index: int) -> dict:
     List the presets of an FX plugin by name (in order: a preset's place in the
     list, from 0, is the preset_index load_fx_preset takes), and the one showing now.
     Only call it when the user wants to pick a preset: REAPER can only name a
-    preset by loading it, so each preset is loaded in turn and the plugin is then
-    put back as it was (its preset and parameters). It is one undo step, in case a
-    plugin keeps more state (e.g. a loaded sample); REAPER's preset menu may still
-    name the last preset looked at.
+    preset by loading it, so each preset is loaded in turn into a bypassed copy
+    of the plugin, which is then removed; the plugin itself is not touched. It
+    is one undo step.
     """
     track = get_project().tracks[track_index]
     error = fx_index_error(track, fx_index)
@@ -89,14 +95,19 @@ def list_fx_presets(*, track_index: int, fx_index: int) -> dict:
         return error
     fx_name = track.fxs[fx_index].name
     current = current_preset(track.id, fx_index)
-    with restoring_params(track.id, fx_index) as outcome:
-        names, count = preset_names(track.id, fx_index)
+    before = param_values(track.id, fx_index)
+    try:
+        with scratch_copy(track.id, fx_index) as copy:
+            names, count = preset_names(track.id, copy)
+    except RuntimeError as e:
+        return {"success": False, "error": str(e)}
+    restored = same_settings(track.id, fx_index, before)
     result = {"success": True, "track_index": track_index, "fx_index": fx_index,
               "fx_name": fx_name, "current_preset": current, "count": count,
-              "presets": names, "settings_restored": outcome["restored"]}
+              "presets": names, "settings_restored": restored}
     if count > MAX_PRESETS:
         result["note"] = f"Only the first {MAX_PRESETS} of {count} presets are listed"
-    if not outcome["restored"]:
+    if not restored:
         result["warning"] = ("The plugin's settings did not read back exactly as before; "
                              "use undo to put them back")
     return result

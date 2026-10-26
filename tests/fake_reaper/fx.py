@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING
 
 from tests.fake_reaper.objects import INSTALLED_FX, PRESETS, REAPER_PARAMS, FXState, display
 
+# Plugins whose displayed value leaves the unit out (REAPER 7.69's ReaEQ and ReaComp).
+UNITLESS_DISPLAY = ("ReaEQ", "ReaComp")
+
 if TYPE_CHECKING:
     from tests.fake_reaper.api import FakeReaper
 
@@ -53,12 +56,27 @@ class FX:
         return True
 
     def TrackFX_GetFormattedParamValue(self: FakeReaper, track, fx, param, buf, size) -> list:
+        """REAPER's own plugins show the number without its unit here ("20.0",
+        not "20.0 ms"; seen on 7.69)."""
         state = self._fx(track, fx)
-        return [True, track, fx, param, display(state.plugin, param, state.values[param]), size]
+        text = display(state.plugin, param, state.values[param])
+        if state.plugin in UNITLESS_DISPLAY:
+            text = text.split(" ")[0]
+        return [True, track, fx, param, text, size]
 
     def TrackFX_FormatParamValueNormalized(self: FakeReaper, track, fx, param, value, buf, size):
+        """With the unit; and for ReaEQ's gains on another curve than the
+        plugin's (7.69 formatted 0.25 as "0.0 dB" where ReaEQ showed -6.0)."""
         state = self._fx(track, fx)
+        if state.plugin == "ReaEQ" and INSTALLED_FX["ReaEQ"][param].startswith("Gain"):
+            value = value ** 0.5
         return [True, track, fx, param, value, display(state.plugin, param, value), size]
+
+    def TrackFX_GetCount(self: FakeReaper, track: str) -> int:
+        return len(self.track(track).fxs)
+
+    def TrackFX_SetEnabled(self: FakeReaper, track: str, fx: int, enabled: bool) -> None:
+        self._fx(track, fx).enabled = bool(enabled)
 
     def TrackFX_Delete(self: FakeReaper, track: str, fx_index: int) -> bool:
         """False for an FX that is not there (-1 included); nothing is removed."""

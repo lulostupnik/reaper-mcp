@@ -3,6 +3,9 @@
 See mix_snapshots.py for what a snapshot holds and how it is stored.
 """
 
+import math
+
+from reaper_mcp.fx_values import parse_value, shown_text
 from reaper_mcp.mix_snapshots import (
     CURRENT,
     MASTER,
@@ -242,6 +245,22 @@ def _format(pointer: str, fx: int, param: int, *, value: float) -> str | None:
     return str(result[5]) if result[0] and result[5] else None
 
 
+def _formatter_agrees(pointer: str, fx: int, param: int) -> bool:
+    """Whether REAPER's formatter shows the parameter's current value as the
+    plug-in does. For ReaEQ's band gains it does not (7.69: it formats 0.5 as
+    "6.0 dB" while ReaEQ shows 0.0), and its texts for saved values would mislead."""
+    current = RPR.TrackFX_GetParamNormalized(pointer, fx, param)
+    if not 1e-6 < current < 1 - 1e-6:  # at an end, curves that differ may still agree
+        return False
+    shown = parse_value(shown_text(pointer, fx, param))
+    formatted = parse_value(_format(pointer, fx, param, value=current) or "")
+    if shown is None or formatted is None:
+        return formatted is None and shown is None
+    if math.isinf(shown[0]) or math.isinf(formatted[0]):
+        return shown[0] == formatted[0]
+    return math.isclose(shown[0], formatted[0], rel_tol=1e-3, abs_tol=1e-3)
+
+
 def _param_differences(a_fx: dict, b_fx: dict, live, *, detail: bool) -> list[dict]:
     """Parameters that differ between two saves of one FX, with the values as
     the plug-in displays them when the FX is still on the track (live: (pointer,
@@ -257,7 +276,7 @@ def _param_differences(a_fx: dict, b_fx: dict, live, *, detail: bool) -> list[di
     for i in moved:
         p, q = a_params[i], b_params[i]
         a_value, b_value = round(p[1], 4), round(q[1], 4)
-        if live is not None:
+        if live is not None and _formatter_agrees(live[0], live[1], i):
             a_value = _format(live[0], live[1], i, value=p[1]) or a_value
             b_value = _format(live[0], live[1], i, value=q[1]) or b_value
         differences.append({"setting": f"{a_fx['name']}: {p[0] or q[0]}", "a": a_value,
