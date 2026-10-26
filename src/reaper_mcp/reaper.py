@@ -509,6 +509,7 @@ def _connect_to_bridge() -> str:
         # Fills reascript_api in place with the functions REAPER exposes; RPR
         # is this same module object.
         importlib.reload(_reascript_api)
+        _refresh_fx_functions()
     except BaseException:
         client.close()  # not left half set up and registered with the bridge
         raise
@@ -518,3 +519,23 @@ def _connect_to_bridge() -> str:
 def get_project() -> reapy.Project:
     ensure_connected()
     return reapy.Project()
+
+
+def _refresh_fx_functions() -> None:
+    """Refill reapy's FX function tables from the now-filled reascript_api.
+
+    reapy.FX copies the TrackFX_/TakeFX_ functions out of reascript_api into a
+    class-level table when reapy is imported. reapy's own connect happens
+    during that import; this server connects later, so the table would stay
+    empty and every FX property (name, params, ...) would fail. The tables are
+    updated in place because FX instances hold references to them.
+    """
+    from reapy.core.fx import fx as reapy_fx
+
+    for prefix, table in reapy_fx.FX.functions.items():
+        table.clear()
+        table.update({
+            name.replace(prefix, ""): function
+            for name, function in vars(_reascript_api).items()
+            if name.startswith(prefix)
+        })

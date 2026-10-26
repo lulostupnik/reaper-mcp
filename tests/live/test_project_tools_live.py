@@ -82,11 +82,15 @@ def close_current_tab_without_prompt(tmp_path) -> None:
 
 def test_create_project_opens_a_new_tab_and_keeps_the_current_one(live_project, call, tmp_path):
     live_project.add_track(0, "unsaved work")
+    # An API edit does not mark a saved project dirty (an earlier test may have
+    # saved this one), so mark it: the point is that unsaved work survives.
+    RPR.MarkProjectDirty(0)
     assert RPR.IsProjectDirty(0)
     original = RPR.EnumProjects(-1, "", 512)[0]
     tabs = len(open_projects())
     try:
-        result = call("create_project", tempo=95.0, time_signature="7/8", name="Sketch")
+        result = call("create_project", tempo=95.0, time_signature="7/8", name="Sketch",
+                      use_default_template=False)
         assert result["success"] is True, result
         assert len(open_projects()) == tabs + 1
         assert RPR.EnumProjects(-1, "", 512)[0] != original

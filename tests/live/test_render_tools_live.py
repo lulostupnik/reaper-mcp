@@ -43,7 +43,9 @@ def test_render_project_twice_to_the_same_path(add_tone, call, tmp_path):
     add_tone("a", 440)
     out = str(tmp_path / "mix.wav")
     assert call("render_project", output_path=out)["success"] is True
-    assert call("render_project", output_path=out)["success"] is True
+    refused = call("render_project", output_path=out)
+    assert refused["success"] is False and "overwrite=true" in refused["error"]
+    assert call("render_project", output_path=out, overwrite=True)["success"] is True
 
 
 def test_render_empty_project_is_refused(live_project, call, tmp_path):
@@ -67,7 +69,9 @@ def test_render_stems_solos_each_track(add_tone, call, tmp_path, live_project):
     add_tone("low", 220)
     add_tone("high", 880)
     live_project.tracks[1].set_info_value("I_SOLO", 2)
-    result = call("render_stems", output_directory=str(tmp_path), track_indices=None)
+    # Not tmp_path itself: add_tone's source files live there, and stems named
+    # after the tracks would collide with them.
+    result = call("render_stems", output_directory=str(tmp_path / "stems"), track_indices=None)
     assert result["success"] is True, result
     low, high = (stem["output_path"] for stem in result["stems"])
     assert dominant_hz(low) == pytest.approx(220, abs=2)
@@ -78,9 +82,10 @@ def test_render_stems_solos_each_track(add_tone, call, tmp_path, live_project):
 def test_render_stems_duplicate_names_get_unique_files(add_tone, call, tmp_path):
     add_tone("Kick", 220)
     add_tone("Kick", 330)
-    result = call("render_stems", output_directory=str(tmp_path))
+    stems = tmp_path / "stems"
+    result = call("render_stems", output_directory=str(stems))
     paths = [stem["output_path"] for stem in result["stems"]]
-    assert paths == [str(tmp_path / "Kick.wav"), str(tmp_path / "Kick_2.wav")]
+    assert paths == [str(stems / "Kick.wav"), str(stems / "Kick_2.wav")]
     assert dominant_hz(paths[1]) == pytest.approx(330, abs=2)
 
 
@@ -179,3 +184,12 @@ def test_render_regions_into_subdirectories(add_tone, live_project, call, tmp_pa
     assert [f["path"] for f in result["files"]] == expected
     durations = [sf.info(path).duration for path in expected]
     assert durations == [pytest.approx(d, abs=0.01) for d in (0.5, 1.0)]
+
+
+def test_render_stems_never_replaces_the_project_sources(add_tone, call, tmp_path):
+    add_tone("low", 220)
+    source = tmp_path / "low.wav"
+    before = source.read_bytes()
+    result = call("render_stems", output_directory=str(tmp_path))
+    assert result["success"] is False and "overwrite=true" in result["error"]
+    assert source.read_bytes() == before
