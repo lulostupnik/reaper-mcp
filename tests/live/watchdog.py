@@ -88,11 +88,19 @@ def _x11_dialogs() -> dict[str, str]:
         if not match:
             continue
         window, title = match.groups()
-        if " - REAPER v" in title or title.startswith(TRANSIENT_PREFIXES):
+        # The main window: "song - REAPER v7.69 ...", or "REAPER v7.69 ..." untitled.
+        if " - REAPER v" in title or title.startswith(("REAPER v", *TRANSIENT_PREFIXES)):
             continue
-        if "IsViewable" in _x11("xwininfo", "-id", window):
+        if "IsViewable" in _x11("xwininfo", "-id", window) and _x11_blocking(window):
             found[title or f"untitled {window}"] = window
     return found
+
+
+def _x11_blocking(window: str) -> bool:
+    """A modal window or a dialog. Plain windows (the evaluation reminder,
+    the mixer, an FX window) do not block calls."""
+    state = _x11_describe(window)
+    return "_NET_WM_STATE_MODAL" in state or "_NET_WM_WINDOW_TYPE_DIALOG" in state
 
 
 def _x11_describe(window: str) -> str:
