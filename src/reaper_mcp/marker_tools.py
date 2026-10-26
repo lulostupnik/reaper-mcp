@@ -15,7 +15,10 @@ from reaper_mcp.undo import edits, no_undo, read_only
 
 KINDS = ("marker", "region")
 DEFAULT_COLOR = 0
-NEXT_FREE_NUMBER = -1  # AddRegionOrMarker's wantidx: let REAPER number it
+# AddProjectMarker2's wantidx: let REAPER number it (the lowest free number of
+# that kind, seen on 7.69). AddRegionOrMarker, which would return the new
+# ProjectMarker*, is not in REAPER 7.69.
+NEXT_FREE_NUMBER = -1
 
 
 @dataclass(frozen=True)
@@ -129,10 +132,18 @@ def list_markers() -> dict:
             "regions": [m.describe() for m in marks if m.is_region]}
 
 
-def _added(handle: Pointer, what: str) -> dict:
-    if is_null(handle):
+def _add(*, is_region: bool, start: float, end: float, name: str) -> dict:
+    """Add a marker or region and describe it. AddProjectMarker2 returns only
+    the new mark's number (which another mark of that kind may share), so the
+    new mark is the one whose GUID was not there before."""
+    what = KINDS[is_region]
+    before = {m.guid for m in all_marks()}
+    number = RPR.AddProjectMarker2(0, is_region, start, end, name, NEXT_FREE_NUMBER,
+                                   DEFAULT_COLOR)
+    new = [m for m in all_marks() if m.guid not in before]
+    if number < 0 or len(new) != 1:
         return {"success": False, "error": f"REAPER did not add the {what}"}
-    return {"success": True, **read_mark(handle).describe()}
+    return {"success": True, **new[0].describe()}
 
 
 @edits()
@@ -141,9 +152,7 @@ def add_marker(*, position: float, name: str = "") -> dict:
     REAPER gives it the next free number."""
     if position < 0:
         return {"success": False, "error": "position must be 0 seconds or later"}
-    handle = RPR.AddRegionOrMarker(0, False, position, position, name, NEXT_FREE_NUMBER,
-                                   DEFAULT_COLOR)
-    return _added(handle, "marker")
+    return _add(is_region=False, start=position, end=position, name=name)
 
 
 @edits()
@@ -152,8 +161,7 @@ def add_region(*, start: float, end: float, name: str = "") -> dict:
     "Verse 1". Regions mark song parts and can be rendered one by one."""
     if start < 0 or end <= start:
         return {"success": False, "error": "need 0 <= start < end (seconds)"}
-    handle = RPR.AddRegionOrMarker(0, True, start, end, name, NEXT_FREE_NUMBER, DEFAULT_COLOR)
-    return _added(handle, "region")
+    return _add(is_region=True, start=start, end=end, name=name)
 
 
 @edits()

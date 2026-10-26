@@ -191,7 +191,7 @@ def test_get_project_info_markers_and_regions(reaper, call):
 def test_get_project_info_marker_numbers_are_not_list_positions(reaper, call):
     reaper.markers = [(1.0, "verse"), (6.0, "chorus")]
     reaper.DeleteProjectMarker(0, 1, False)
-    reaper.AddRegionOrMarker(0, False, 9.0, 9.0, "outro", -1, 0)
+    reaper.AddProjectMarker2(0, False, 9.0, 9.0, "outro", -1, 0)
     markers = call("get_project_info")["markers"]
     assert [(m["number"], m["name"]) for m in markers] == [
         (2, "chorus"), (1, "outro")]

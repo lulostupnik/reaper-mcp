@@ -8,7 +8,7 @@ import pytest
 def song(reaper):
     """Markers numbered out of timeline order (2 before 1, a gap at 3), and regions."""
     reaper.markers = [(1.0, "count-in"), (8.0, "Chorus")]
-    reaper.AddRegionOrMarker(0, False, 0.5, 0.5, "start", 4, 0)  # number 4, first in time
+    reaper.AddProjectMarker2(0, False, 0.5, 0.5, "start", 4, 0)  # number 4, first in time
     reaper.regions = [(0.0, 8.0, "Verse"), (8.0, 16.0, "Chorus")]
     return reaper
 
@@ -34,6 +34,17 @@ def test_add_marker_gets_the_next_free_number(song, call):
         "marker", 3, "Solo", 12.0)
     assert result["guid"].startswith("{")
     assert song.undo_steps[-1][0].startswith("MCP: Add marker")
+
+
+def test_add_marker_describes_the_new_one_when_a_number_is_shared(song, call):
+    """AddProjectMarker2 (REAPER 7.69 has no AddRegionOrMarker) returns only a
+    number, and the marker kind can share it (a marker numbered by hand)."""
+    song.AddProjectMarker2(0, False, 30.0, 30.0, "by hand", 3, 0)
+    song.project_markers[-1].number = 3  # REAPER lets the user give two markers one number
+    song.AddProjectMarker2(0, False, 31.0, 31.0, "also 3", 5, 0)
+    song.project_markers[-1].number = 3
+    result = call("add_marker", position=12.0, name="Solo")
+    assert (result["success"], result["name"], result["position"]) == (True, "Solo", 12.0)
 
 
 def test_add_region(reaper, call):
@@ -78,7 +89,7 @@ def test_unknown_marker_lists_the_ones_there(song, call):
 
 
 def test_ambiguous_name_asks_for_the_guid(song, call):
-    song.AddRegionOrMarker(0, False, 20.0, 20.0, "chorus", -1, 0)
+    song.AddProjectMarker2(0, False, 20.0, 20.0, "chorus", -1, 0)
     result = call("delete_marker", marker="Chorus", kind="marker")
     assert result["success"] is False
     assert "the GUID" in result["error"]
@@ -104,7 +115,7 @@ def test_the_wrong_kind_hints_at_the_other(song, call):
 
 
 def test_digits_that_are_a_number_and_a_name_are_ambiguous(song, call):
-    song.AddRegionOrMarker(0, False, 20.0, 20.0, "2", 5, 0)  # marker 5 named "2"
+    song.AddProjectMarker2(0, False, 20.0, 20.0, "2", 5, 0)  # marker 5 named "2"
     result = call("delete_marker", marker="2", kind="marker")
     assert result["success"] is False
     assert "Several match '2'" in result["error"]
@@ -174,7 +185,7 @@ def test_delete_region_and_undo(song, call):
 
 
 def test_delete_refuses_shared_numbers(song, call):
-    song.AddRegionOrMarker(0, False, 20.0, 20.0, "dup", 9, 0)
+    song.AddProjectMarker2(0, False, 20.0, 20.0, "dup", 9, 0)
     song.project_markers[-1].number = 1
     guid = song.project_markers[-1].guid
     result = call("delete_marker", marker=guid)

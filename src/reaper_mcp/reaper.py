@@ -129,7 +129,7 @@ class ReaScriptAPI(Protocol):
     def SetRegionOrMarkerInfo_Value(  # noqa: PLR0917 -- REAPER's own signature
         self, _project: int, _marker: Pointer, _param: str, _value: float, /
     ) -> float: ...
-    def AddRegionOrMarker(  # noqa: PLR0917 -- REAPER's own signature
+    def AddProjectMarker2(  # noqa: PLR0917 -- REAPER's own signature
         self, _project: int, _is_region: bool, _position: float, _region_end: float,
         _name: str, _want_index: int, _color: int, /,
     ) -> Pointer: ...

@@ -98,14 +98,19 @@ class Markers:
                 "I_INDEX": float(self._ordered().index(mark))}[param]
 
     def SetRegionOrMarkerInfo_Value(self: FakeReaper, project, handle, param, value) -> float:
-        """A marker's end follows its start; a region refuses an end before its start."""
+        """A marker's end follows its start; a region whose start is set past its
+        end (or end before its start) gets the two swapped (seen on 7.69)."""
         mark = self.marker_state(handle)
         if param == "D_STARTPOS":
             mark.start = value
             if not mark.is_region:
                 mark.end = value
-        elif param == "D_ENDPOS" and mark.is_region and value >= mark.start:
+            elif mark.start > mark.end:
+                mark.start, mark.end = mark.end, mark.start
+        elif param == "D_ENDPOS" and mark.is_region:
             mark.end = value
+            if mark.end < mark.start:
+                mark.start, mark.end = mark.end, mark.start
         elif param == "I_NUMBER":
             mark.number = int(value)
         return 1.0
@@ -120,15 +125,16 @@ class Markers:
             mark.name = value
         return [True, project, handle, param, mark.name, is_set]
 
-    def AddRegionOrMarker(self: FakeReaper, project, is_region, position, end, name, want, color):
-        """The lowest free number of that kind, or want when it is free."""
+    def AddProjectMarker2(self: FakeReaper, project, is_region, position, end, name, want, color):
+        """The new mark's number: the lowest free one of that kind, or want when
+        it is free (seen on 7.69). REAPER 7.69 has no AddRegionOrMarker."""
         used = {m.number for m in self.project_markers if m.is_region == is_region}
         number = want if want >= 0 and want not in used else next(
             n for n in range(1, len(used) + 2) if n not in used)
         mark = MarkerState(self.new_pointer("ProjectMarker"), is_region, position,
                            end if is_region else position, name, number)
         self.project_markers.append(mark)
-        return mark.pointer
+        return number
 
     def DeleteProjectMarker(self: FakeReaper, project: int, number: int, is_region: bool) -> bool:
         for mark in self.project_markers:
