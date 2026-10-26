@@ -187,7 +187,7 @@ def save_project(*, project_path: str = "", overwrite: bool = False) -> dict:
     return {"success": True, "project_path": project_path}
 
 
-def unwritable(folder: Path) -> str | None:
+def unwritable(folder: Path, *, nothing: str = "nothing was saved") -> str | None:
     """Why REAPER could not write a file in folder, or None.
 
     REAPER answers a save it cannot write with a modal error dialog ("Error
@@ -199,7 +199,7 @@ def unwritable(folder: Path) -> str | None:
         with tempfile.NamedTemporaryFile(dir=folder, prefix=".reaper-mcp-check-"):
             pass
     except OSError as e:
-        return f"cannot write in {folder} ({e.strerror or e}); nothing was saved"
+        return f"cannot write in {folder} ({e.strerror or e}); {nothing}"
     return None
 
 

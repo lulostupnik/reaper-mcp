@@ -145,6 +145,24 @@ def test_glue_items_does_not_select_the_glued_item_in_place_of_a_selected_origin
     assert other.selected and not glued.selected
 
 
+def test_glue_items_into_a_folder_reaper_cannot_write_is_refused_first(reaper, call, tmp_path):
+    """The glued file goes into the recording folder; REAPER would answer a
+    file it cannot write with a modal dialog."""
+    folder = tmp_path / "read-only"
+    folder.mkdir()
+    reaper.project_file = str(folder / "song.rpp")
+    track = reaper.add_track("Vox")
+    first = _item(reaper, track, position=0.0, length=1.0)
+    folder.chmod(0o555)
+    try:
+        result = call("glue_items", items_to_glue=[first.guid])
+    finally:
+        folder.chmod(0o755)
+    assert result["success"] is False
+    assert "cannot write in" in result["error"] and "nothing was glued" in result["error"]
+    assert GLUE not in reaper.commands
+
+
 def test_glue_items_finds_the_result_when_reaper_reuses_the_first_item(reaper, call):
     reaper.glue_reuses_first_item = True
     track = reaper.add_track("Vox")

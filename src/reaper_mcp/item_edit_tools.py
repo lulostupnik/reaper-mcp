@@ -4,11 +4,13 @@ selection, and glue.
 
 import re
 import uuid
+from pathlib import Path
 
 from reaper_mcp import actions, items
 from reaper_mcp.actions import GLUE_ITEMS
 from reaper_mcp.item_tools import failure, resolve
 from reaper_mcp.items import item_value, ref_of
+from reaper_mcp.project_tools import unwritable
 from reaper_mcp.reaper import RPR
 from reaper_mcp.transport_tools import time_range
 from reaper_mcp.undo import edits
@@ -117,6 +119,18 @@ def _glued(track, span: tuple[float, float], *, before: set[str], glued: set[str
             <= GLUE_TOLERANCE]
 
 
+def _media_folder_error() -> str | None:
+    """Why REAPER could not write the glued file, or None. REAPER makes the
+    recording folder if needed, so its nearest existing folder is checked;
+    a write it cannot make would end in a modal error dialog."""
+    from reaper_mcp.recording_tools import record_path
+
+    folder = Path(record_path())
+    while not folder.exists() and folder != folder.parent:
+        folder = folder.parent
+    return unwritable(folder, nothing="nothing was glued")
+
+
 def _take_guid(item) -> str | None:
     take = items.active_take(item)
     return None if take is None else items.take_string(take, "GUID")
@@ -139,6 +153,9 @@ def glue_items(*, items_to_glue: list[int | str], track_index: int | None = None
     except LookupError as e:
         return failure(e)
     error = _glue_error(refs)
+    if error:
+        return {"success": False, "error": error}
+    error = _media_folder_error()
     if error:
         return {"success": False, "error": error}
     actions.check(GLUE_ITEMS)

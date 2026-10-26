@@ -453,3 +453,16 @@ def test_a_duplicated_midi_item_is_not_pooled(live_project, call):
     # (retval, take, notes, ccs, sysex)
     assert RPR.MIDI_CountEvts(take, 0, 0, 0)[2] == 1
     assert RPR.MIDI_CountEvts(copy, 0, 0, 0)[2] == 2
+
+
+def test_glue_into_a_folder_reaper_cannot_write_is_refused_without_a_dialog(
+        project_in_tmp, live_project, call, tmp_path):
+    track = live_project.add_track(0, "g")
+    item = insert(live_project, track, write(tmp_path / "a.wav", sine(1.0)))
+    tmp_path.chmod(0o555)
+    try:
+        result = call("glue_items", items_to_glue=[guid(item)])
+    finally:
+        tmp_path.chmod(0o755)
+    assert result["success"] is False and "nothing was glued" in result["error"], result
+    assert RPR.CountTrackMediaItems(track.id) == 1
