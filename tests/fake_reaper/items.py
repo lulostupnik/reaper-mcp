@@ -143,10 +143,15 @@ class Items(Sources):
             for item in track.items:
                 item.selected = selected
 
-    def ValidatePtr2(self: FakeReaper, project: int, pointer: str, kind: str) -> bool:
+    def ValidatePtr2(self: FakeReaper, project: int, pointer: int, kind: str) -> bool:
+        """reapy's replacement: the pointer as a number; a pointer string
+        raises TypeError inside REAPER (seen on 7.69)."""
+        if not isinstance(pointer, int):
+            raise TypeError("'str' object cannot be interpreted as an integer")
         if kind != "MediaItem*":
             raise NotImplementedError(kind)
-        return any(i.pointer == pointer for t in self.tracks for i in t.items)
+        return any(int(i.pointer.rsplit("0x", 1)[1], 16) == pointer
+                   for t in self.tracks for i in t.items)
 
     # Takes
 

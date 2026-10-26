@@ -283,11 +283,18 @@ def describe_pieces(pointers: list[Pointer]) -> list[dict]:
              "length": item_value(p, "D_LENGTH")} for p in pointers]
 
 
+def address(pointer: Pointer) -> int:
+    """The number in a pointer string ("(MediaItem*)0x...")."""
+    return int(pointer.rsplit("0x", 1)[1], 16)
+
+
 @contextmanager
 def only_selected(items: list[Pointer]) -> Iterator[None]:
     """Select exactly items while the body runs (for an action that works on
     the selected items), then put the user's selection back: the items that
-    still exist; ValidatePtr2 checks, since a dangling pointer crashes REAPER."""
+    still exist; ValidatePtr2 checks, since a dangling pointer crashes REAPER.
+    reapy replaces ValidatePtr2 with its own, which takes the pointer as a
+    number, not as REAPER's pointer string (a string raised TypeError, 7.69)."""
     before = [RPR.GetSelectedMediaItem(0, i) for i in range(RPR.CountSelectedMediaItems(0))]
     RPR.SelectAllMediaItems(0, False)
     for item in items:
@@ -297,5 +304,5 @@ def only_selected(items: list[Pointer]) -> Iterator[None]:
     finally:
         RPR.SelectAllMediaItems(0, False)
         for item in before:
-            if RPR.ValidatePtr2(0, item, ITEM_TYPE):
+            if RPR.ValidatePtr2(0, address(item), ITEM_TYPE):
                 RPR.SetMediaItemSelected(item, True)
