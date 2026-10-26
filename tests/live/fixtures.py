@@ -54,7 +54,7 @@ def dialog_watchdog():
     """End the run, naming the dialog, if REAPER blocks on one."""
     watchdog = Watchdog()
     if not watchdog.available:
-        print("[live watchdog] not guarding: needs macOS System Events", file=sys.__stderr__)
+        print("[live watchdog] not guarding: needs macOS System Events or X11's xwininfo/xprop", file=sys.__stderr__)
     watchdog.start()
     with pytest.MonkeyPatch.context() as monkeypatch:
         guard_reapy(watchdog, monkeypatch)

@@ -12,9 +12,12 @@ finding, not noise.
 thread did not interrupt reapy's read under pytest, and pytest's capture
 hid the message.)
 
-macOS only (System Events); elsewhere it reports that it is not guarding.
+On macOS it asks System Events; on Linux under X11 (or XWayland) it lists
+REAPER's mapped windows with xwininfo and reads their state with xprop.
+Elsewhere it reports that it is not guarding.
 """
 
+import re
 import shutil
 import socket
 import subprocess
@@ -69,9 +72,51 @@ def _dialogs() -> dict[str, int]:
     return found
 
 
+# xwininfo -root -tree line of a REAPER window: id "title": ("REAPER" "REAPER").
+_X11_WINDOW = re.compile(r'^\s*(0x[0-9a-f]+) "(.*)": \("REAPER" "REAPER"\)')
+
+
+def _x11(*args: str) -> str:
+    return subprocess.run(args, capture_output=True, text=True, timeout=10).stdout
+
+
+def _x11_dialogs() -> dict[str, str]:
+    """REAPER's mapped windows other than the main one, keyed by title, to window id."""
+    found = {}
+    for line in _x11("xwininfo", "-root", "-tree").splitlines():
+        match = _X11_WINDOW.match(line)
+        if not match:
+            continue
+        window, title = match.groups()
+        if " - REAPER v" in title or title.startswith(TRANSIENT_PREFIXES):
+            continue
+        if "IsViewable" in _x11("xwininfo", "-id", window):
+            found[title or f"untitled {window}"] = window
+    return found
+
+
+def _x11_describe(window: str) -> str:
+    state = _x11("xprop", "-id", window, "_NET_WM_WINDOW_TYPE", "_NET_WM_STATE")
+    return " ".join(state.split())
+
+
+def _platform() -> tuple | None:
+    """(list dialogs, describe one) for this system, or None if it cannot be watched."""
+    if sys.platform == "darwin" and shutil.which("osascript"):
+        return _dialogs, _describe
+    if sys.platform.startswith("linux") and shutil.which("xwininfo") and shutil.which("xprop"):
+        try:
+            probe = subprocess.run(["xwininfo", "-root"], capture_output=True, timeout=10)
+        except (subprocess.SubprocessError, OSError):
+            return None
+        return (_x11_dialogs, _x11_describe) if probe.returncode == 0 else None
+    return None
+
+
 class Watchdog:
     def __init__(self) -> None:
-        self.available = sys.platform == "darwin" and shutil.which("osascript") is not None
+        self._platform = _platform()
+        self.available = self._platform is not None
         self.tripped: str | None = None
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -84,17 +129,19 @@ class Watchdog:
         self._stop.set()
 
     def _run(self) -> None:
+        assert self._platform is not None
+        list_dialogs, describe = self._platform
         first_seen: dict[str, float] = {}
         while not self._stop.wait(POLL_SECONDS):
             try:
-                open_now = _dialogs()
+                open_now = list_dialogs()
             except (subprocess.SubprocessError, OSError):
                 continue
             now = time.monotonic()
             first_seen = {w: first_seen.get(w, now) for w in open_now}
             stuck = [w for w, t in first_seen.items() if now - t >= GRACE_SECONDS]
             if stuck:
-                self.tripped = "; ".join(f"{w!r}: {_describe(open_now[w])}" for w in stuck)
+                self.tripped = "; ".join(f"{w!r}: {describe(open_now[w])}" for w in stuck)
                 return
 
 
@@ -126,3 +173,32 @@ def guard_reapy(watchdog: Watchdog, monkeypatch) -> None:
         return self._socket.recv(length, socket.MSG_WAITALL)
 
     monkeypatch.setattr(Socket, "recv", recv)
+    _guard_bridge_client(watchdog, monkeypatch)
+
+
+def _guard_bridge_client(watchdog: Watchdog, monkeypatch) -> None:
+    """The same for the server's own bridge client, which reads with its own
+    deadline (60 s) instead of reapy's Socket.recv: wait in one-second slices
+    and end the run as soon as the watchdog names a dialog."""
+    from reaper_mcp.reaper import _BridgeClient
+
+    def recv_exactly(self, length: int, deadline: float) -> bytes:
+        chunks, received = [], 0
+        while received < length:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("timed out waiting for REAPER")
+            self._socket.settimeout(min(remaining, 1.0))
+            try:
+                chunk = self._socket.recv(min(length - received, 1 << 20))
+            except socket.timeout:
+                if watchdog.tripped:
+                    pytest.exit(f"REAPER is blocked on a dialog: {watchdog.tripped}", returncode=3)
+                continue
+            if not chunk:
+                raise ConnectionAbortedError("REAPER closed the connection")
+            chunks.append(chunk)
+            received += len(chunk)
+        return b"".join(chunks)
+
+    monkeypatch.setattr(_BridgeClient, "_recv_exactly", recv_exactly)
