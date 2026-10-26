@@ -123,7 +123,9 @@ def read(audio: TakeAudio) -> tuple[np.ndarray, int]:
         if hi > lo else np.zeros((0, info.channels), dtype="float32")
     before = min(count, max(0, -first))
     after = max(0, count - before - len(data))
-    return _channels(np.pad(data, ((before, after), (0, 0))), audio.channel_mode), rate
+    if before or after:  # np.pad copies: only when the item runs past the file
+        data = np.pad(data, ((before, after), (0, 0)))
+    return _channels(data, audio.channel_mode), rate
 
 
 def window_levels(data: np.ndarray, rate: int, playrate: float) -> tuple[np.ndarray, float]:
@@ -196,10 +198,63 @@ def sound_span(audio: TakeAudio, data: np.ndarray, rate: int, *,
     return min(audio.length, (loud[-1] + 1) * window) - loud[0] * window
 
 
-def _lufs(data: np.ndarray, rate: int) -> float | None:
-    import pyloudnorm
+# BS.1770 channel weights (L, R, C, Ls, Rs), as pyloudnorm has them; any
+# further channel counts once.
+CHANNEL_WEIGHTS = (1.0, 1.0, 1.0, 1.41, 1.41)
+ABSOLUTE_GATE = -70.0  # LUFS
+RELATIVE_GATE = -10.0  # LU below the absolutely gated loudness
 
-    if len(data) < MIN_LUFS_SECONDS * rate:
+
+def _lufs(data: np.ndarray, rate: int) -> float | None:
+    """Integrated loudness (ITU-R BS.1770-4) of samples (frames x channels).
+
+    pyloudnorm's algorithm and filters, computed block by block: its
+    integrated_loudness copies the whole take to float64 and filters it in
+    place, which took 3.3 GB and 8 s for a 25-minute stereo take (seen live),
+    a long hold of REAPER inside normalize_item's undo step. Here each
+    channel's K-weighted energy is summed as it streams, and only the running
+    sums at the 400 ms gating blocks' edges are kept."""
+    import pyloudnorm
+    from scipy.signal import lfilter
+
+    frames = len(data)
+    if frames < MIN_LUFS_SECONDS * rate:
         return None
-    loudness = float(pyloudnorm.Meter(rate).integrated_loudness(data.astype(np.float64)))
-    return round(loudness, 2) if math.isfinite(loudness) else None
+    meter = pyloudnorm.Meter(rate)
+    stages = list(meter._filters.values())  # pyloudnorm's own K-weighting filters
+    channels = data.shape[1]
+    block, step = meter.block_size, 1.0 - meter.overlap
+    count = int(np.round((frames / rate - block) / (block * step))) + 1
+    j = np.arange(count)
+    lower = np.minimum((block * (j * step) * rate).astype(np.int64), frames)
+    upper = np.minimum((block * (j * step + 1) * rate).astype(np.int64), frames)
+    edges = np.unique(np.concatenate([lower, upper]))
+    energy = np.zeros((channels, len(edges)))  # energy before each edge
+    states = [[np.zeros(max(len(f.a), len(f.b)) - 1) for f in stages] for _ in range(channels)]
+    totals = np.zeros(channels)
+    for first in range(0, frames, BLOCK_FRAMES):
+        last = min(frames, first + BLOCK_FRAMES)
+        inside = (edges > first) & (edges <= last)
+        for ch in range(channels):
+            filtered = data[first:last, ch].astype(np.float64)
+            for k, stage in enumerate(stages):
+                filtered, states[ch][k] = lfilter(stage.b, stage.a, filtered, zi=states[ch][k])
+                filtered *= stage.passband_gain
+            running = np.cumsum(np.square(filtered)) + totals[ch]
+            energy[ch, inside] = running[edges[inside] - first - 1]
+            totals[ch] = running[-1]
+    at = {edge: i for i, edge in enumerate(edges)}
+    z = (energy[:, [at[u] for u in upper]] - energy[:, [at[lo] for lo in lower]]) / (block * rate)
+    weights = np.array([CHANNEL_WEIGHTS[ch] if ch < len(CHANNEL_WEIGHTS) else 1.0
+                        for ch in range(channels)])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        loudness = -0.691 + 10.0 * np.log10(weights @ z)
+        gated = loudness >= ABSOLUTE_GATE
+        if not gated.any():  # all below the absolute gate: no loudness
+            return None
+        relative = -0.691 + 10.0 * np.log10(weights @ z[:, gated].mean(axis=1)) + RELATIVE_GATE
+        kept = (loudness > relative) & (loudness > ABSOLUTE_GATE)
+        if not kept.any():
+            return None
+        result = float(-0.691 + 10.0 * np.log10(weights @ z[:, kept].mean(axis=1)))
+    return round(result, 2) if math.isfinite(result) else None
