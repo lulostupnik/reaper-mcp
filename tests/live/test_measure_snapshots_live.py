@@ -325,3 +325,23 @@ def test_delete_track_and_remove_fx_by_guid(live_project, call):
     deleted = call("delete_track", track_index=guid)
     assert deleted["success"] is True, deleted
     assert live_project.n_tracks == 0
+
+
+def test_a_span_measurement_puts_linked_loop_points_back(add_tone, call, live_project):
+    add_tone("a", 440)
+    linked = 40621  # Options: Toggle loop points linked to time selection
+    was = RPR.GetToggleCommandState(linked)
+    try:
+        if not was:
+            RPR.Main_OnCommand(linked, 0)
+        RPR.GetSet_LoopTimeRange2(0, True, True, 0.2, 0.4, False)  # the loop points
+        RPR.GetSet_LoopTimeRange2(0, True, False, 0.3, 0.6, False)  # the time selection
+        assert call("measure_track", track_index=0, start=1.0, end=1.5)["success"] is True
+        loop = RPR.GetSet_LoopTimeRange2(0, False, True, 0.0, 0.0, False)[3:5]
+        selection = RPR.GetSet_LoopTimeRange2(0, False, False, 0.0, 0.0, False)[3:5]
+        print("loop / selection after:", loop, selection)
+        assert selection == pytest.approx([0.3, 0.6])
+        assert loop == pytest.approx([0.2, 0.4]) or loop == pytest.approx([0.3, 0.6])
+    finally:
+        if RPR.GetToggleCommandState(linked) != was:
+            RPR.Main_OnCommand(linked, 0)
