@@ -3,6 +3,12 @@ read-only getters over tracks and items.
 
 Undo is modelled as REAPER documents it: Undo_BeginBlock2 / Undo_EndBlock2
 nest, and only the outermost end records a step, under its description.
+Through the bridge that only holds while the client holds REAPER's main loop
+(reapy's HOLD): REAPER ends an open block at the end of each pass of its
+loop, so opening one without a hold is an error here.
+REAPER records no step for a block in which it noticed no change (and then
+keeps the redo list). It does not notice the MIDI API's changes (new MIDI
+items, inserted notes) unless MarkTrackItemsDirty is called (seen on 7.69).
 A step remembers the project as it was before the block, so undoing restores
 that state and redoing restores the state the step left.
 """
@@ -10,6 +16,7 @@ that state and redoing restores the state the step left.
 from __future__ import annotations
 
 import copy
+import dataclasses
 from typing import TYPE_CHECKING
 
 from reapy.errors import DistError
@@ -32,12 +39,24 @@ def _null_string_error() -> DistError:
     return DistError("AttributeError: 'NoneType' object has no attribute 'decode'")
 
 
+def _noticed(state: dict) -> dict:
+    """The part of a project snapshot whose changes REAPER's undo notices:
+    all but MIDI items, which change through the MIDI API."""
+    tracks = [dataclasses.replace(t, items=[i for i in t.items if not i.midi])
+              for t in state["tracks"]]
+    return {**state, "tracks": tracks}
+
+
 class Session:
     """Mixed into FakeReaper; start_session() sets the state up."""
 
     def start_session(self: FakeReaper) -> None:
         self.undo_depth = 0
         self.ui_refresh_prevented = 0
+        # Whether the client holds REAPER's main loop (reapy's HOLD).
+        self.held = False
+        # MarkTrackItemsDirty was called in the open undo block.
+        self._marked_dirty = False
         self.undo_steps: list[tuple[str, dict]] = []
         self.redo_steps: list[tuple[str, dict]] = []
         self._before_block: dict = {}
@@ -60,9 +79,31 @@ class Session:
 
     # Undo
 
+    def control(self: FakeReaper, command: str) -> None:
+        """reapy's HOLD / RELEASE requests."""
+        if command == "HOLD":
+            if self.held:
+                raise AssertionError("HOLD while already held")
+            self.held = True
+        elif command == "RELEASE":
+            if not self.held:
+                raise AssertionError("RELEASE without HOLD")
+            self.held = False
+        else:
+            raise AssertionError(f"unknown control request {command!r}")
+
+    def connect(self: FakeReaper) -> str:
+        """A new connection: the bridge ended any hold when the old one went."""
+        self.held = False
+        return self.bridge_instance
+
     def Undo_BeginBlock2(self: FakeReaper, project: int) -> None:
+        if not self.held:
+            raise AssertionError("Undo_BeginBlock2 outside a hold: REAPER would end the block "
+                                 'at the end of this pass of its loop, as "ReaScript: Run"')
         if self.undo_depth == 0:
             self._before_block = self.snapshot()
+            self._marked_dirty = False
         self.undo_depth += 1
 
     def Undo_EndBlock2(self: FakeReaper, project: int, description: str, flags: int) -> None:
@@ -70,9 +111,14 @@ class Session:
             raise AssertionError("Undo_EndBlock2 without Undo_BeginBlock2")
         self.undo_depth -= 1
         if self.undo_depth == 0:
+            if not self._marked_dirty and _noticed(self.snapshot()) == _noticed(self._before_block):
+                return
             self.undo_steps.append((description, self._before_block))
             self.redo_steps.clear()
             self.dirty = True
+
+    def MarkTrackItemsDirty(self: FakeReaper, track: str, item: str) -> None:
+        self._marked_dirty = True
 
     def PreventUIRefresh(self: FakeReaper, count: int) -> None:
         self.ui_refresh_prevented += count

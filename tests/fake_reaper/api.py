@@ -222,7 +222,11 @@ class FakeReaper(Session, Recording, Transport):
     # Tempo and time signature (return shapes as REAPER 7.82 gives them)
 
     def Master_GetTempo(self) -> float:
-        for position, bpm, _, _ in self.tempo_markers:
+        # REAPER recomputes its tempo map from the markers only when an undo
+        # block ends (seen on 7.69), so inside one the markers' old tempo shows.
+        markers = (self._before_block["tempo_markers"] if self.undo_depth
+                   else self.tempo_markers)
+        for position, bpm, _, _ in markers:
             if position == 0.0:
                 return bpm
         return self.bpm

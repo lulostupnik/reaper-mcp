@@ -58,6 +58,7 @@ def reaper(monkeypatch, tmp_path):
     yield fake
     assert fake.undo_depth == 0, "an undo block was left open"
     assert fake.ui_refresh_prevented == 0, "PreventUIRefresh was left on"
+    assert not fake.held, "REAPER's main loop was left held"
 
 
 async def _call(name: str, arguments: dict) -> dict:

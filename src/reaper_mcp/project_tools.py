@@ -318,7 +318,11 @@ def get_project_info() -> dict:
 def set_tempo(*, bpm: float) -> dict:
     """Set the project tempo in BPM."""
     _set_tempo(get_project(), bpm)
-    return {"success": True, "tempo": current_tempo()}
+    # Inside an undo block REAPER only recomputes its tempo map when the block
+    # ends, so Master_GetTempo still says the old tempo after the marker at 0
+    # was edited: read the marker back instead.
+    marker = _marker_at_start()
+    return {"success": True, "tempo": marker[6] if marker else current_tempo()}
 
 
 @edits(idempotent=True)

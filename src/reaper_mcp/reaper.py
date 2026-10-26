@@ -516,6 +516,32 @@ def _connect_to_bridge() -> str:
     return client.instance
 
 
+def hold_main_loop() -> None:
+    """Run every request from now until release_main_loop() in one pass of
+    REAPER's main loop (reapy's HOLD; REAPER's UI waits meanwhile).
+
+    REAPER closes an open undo block at the end of each pass of the bridge's
+    loop, recording what changed as "ReaScript: Run", and ignores the
+    Undo_EndBlock2 sent later; so an undo block only gets its own name, and
+    only groups its changes into one step, when it opens and closes in the
+    same pass. The bridge drops a held client that goes quiet for
+    bridge.HOLD_IDLE_SECONDS."""
+    _control(bridge.HOLD)
+
+
+def release_main_loop() -> None:
+    """Let REAPER's main loop go on after hold_main_loop()."""
+    _control(bridge.RELEASE)
+
+
+def _control(command: str) -> None:
+    ensure_connected()
+    client = _machines.CLIENT
+    if client is None:
+        raise RuntimeError("Cannot reach REAPER: not connected")
+    client.request(command)
+
+
 def get_project() -> reapy.Project:
     ensure_connected()
     return reapy.Project()

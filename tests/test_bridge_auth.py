@@ -464,3 +464,66 @@ def test_a_connection_reaper_closed_is_dropped_before_the_next_tool_call(bridge_
         assert reaper.lost_call() is None
     finally:
         client.close()
+
+
+# Holding REAPER's main loop (reapy's HOLD), as the server does for an undo block.
+
+@pytest.fixture
+def serving_bridge(monkeypatch):
+    """A bridge LocalServer that also serves requests, as main()'s loop does."""
+    monkeypatch.setattr(bridge, "HOLD_IDLE_SECONDS", 0.3)
+    server = bridge.LocalServer(0, TOKEN)
+    port = server._socket.getsockname()[1]
+    stop = threading.Event()
+
+    def pump():
+        while not stop.is_set():
+            server.accept()
+            server.authenticate_pending()
+            server.send_results(server.process_requests(server.get_requests()))
+            time.sleep(0.005)
+
+    thread = threading.Thread(target=pump, daemon=True)
+    thread.start()
+    yield server, port
+    stop.set()
+    thread.join()
+    for address in list(server.connections):
+        server.disconnect(address)
+    server.close()
+
+
+def _request(client, function):
+    """client's request straight over its socket, without the tool-call guard."""
+    return reaper._client.Client.request(client, function, {"args": [], "kwargs": {}})
+
+
+def test_a_held_client_is_served_until_it_releases(serving_bridge):
+    import os
+
+    server, port = serving_bridge
+    client = reaper._BridgeClient(port, "127.0.0.1", TOKEN)
+    try:
+        assert _request(client, bridge.HOLD) is None
+        assert _request(client, os.getpid) == os.getpid()
+        assert _request(client, bridge.RELEASE) is None
+        assert _request(client, os.getpid) == os.getpid()  # served by the loop again
+    finally:
+        client.close()
+
+
+def test_a_held_client_that_goes_quiet_is_dropped_and_the_loop_goes_on(serving_bridge):
+    import os
+
+    server, port = serving_bridge
+    stalled = reaper._BridgeClient(port, "127.0.0.1", TOKEN)
+    try:
+        assert _request(stalled, bridge.HOLD) is None
+        assert _closed_by_peer(stalled._socket)  # after HOLD_IDLE_SECONDS of silence
+        other = reaper._BridgeClient(port, "127.0.0.1", TOKEN)
+        try:
+            assert _request(other, os.getpid) == os.getpid()
+        finally:
+            other.close()
+    finally:
+        stalled.close()

@@ -95,6 +95,21 @@ def test_a_call_lost_while_opening_or_closing_the_block_never_leaves_it_open(
     assert two_tracks.ui_refresh_prevented == 0
 
 
+@pytest.mark.parametrize("applied", [True, False])
+def test_a_lost_hold_is_not_released_on_the_new_connection(two_tracks, call, applied):
+    """The bridge ends a hold when its connection goes; the new connection
+    is never sent a RELEASE (or anything else) for the old one."""
+    two_tracks.lose_request("HOLD", applied=applied)
+    _assert_uncertain(_create_bus(call), "HOLD")
+    sent = len(two_tracks.requests)
+    _settle(call)
+    assert "RELEASE" not in two_tracks.requests[sent:]
+    assert not two_tracks.held
+    assert two_tracks.undo_depth == 0
+    assert two_tracks.ui_refresh_prevented == 0
+    assert all(t.sends == [] for t in two_tracks.tracks)
+
+
 def test_a_restarted_reaper_is_not_sent_the_old_ones_closing_calls(two_tracks, call):
     two_tracks.lose_request("CreateTrackSend", applied=True, error=ConnectionResetError)
     _create_bus(call)

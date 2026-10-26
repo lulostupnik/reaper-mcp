@@ -38,6 +38,30 @@ def test_a_tool_with_several_changes_is_still_one_step(reaper, call):
     assert all(t.sends == [] and "B_MAINSEND" not in t.info for t in reaper.tracks)
 
 
+def test_the_whole_block_runs_in_one_hold_of_reapers_main_loop(reaper, call):
+    """REAPER ends an undo block at the end of each pass of its main loop, so
+    the block opens and closes while the server holds it (reapy's HOLD)."""
+    reaper.add_track("Kick")
+    reaper.add_track("Snare")
+    call("create_bus", name="Drums", track_indices=[0, 1])
+    sent = [r for r in reaper.requests if r != "CountTracks"]
+    assert sent[:2] == ["HOLD", "Undo_BeginBlock2"]
+    assert sent[-1] == "RELEASE"
+    assert (sent.count("HOLD"), sent.count("RELEASE")) == (1, 1)
+    assert sent.index("Undo_EndBlock2") < sent.index("RELEASE")
+    assert not reaper.held
+
+
+def test_a_block_opened_inside_another_shares_its_hold(reaper, call):
+    from reaper_mcp.undo import undo_block
+
+    reaper.add_track("Vox")
+    with undo_block("outer"), undo_block("inner"):
+        reaper.tracks[0].info["B_MUTE"] = 1.0
+    assert (reaper.requests.count("HOLD"), reaper.requests.count("RELEASE")) == (1, 1)
+    assert _steps(reaper) == ["MCP: outer"]
+
+
 def test_a_read_only_tool_records_no_step(reaper, call):
     reaper.add_track("Vox")
     call("list_tracks")
@@ -65,22 +89,38 @@ def test_a_bad_track_index_is_refused_before_any_undo_step(reaper, call):
     assert reaper.redo_steps  # redo survives a call that could not do anything
 
 
-def test_a_tool_failing_inside_its_block_names_the_step_failed(reaper, call):
+def test_a_tool_failing_before_any_change_leaves_no_step(reaper, call):
+    """REAPER records no step for a block in which nothing changed (seen on
+    7.69), so redo survives a failed call too."""
     reaper.add_track("Vox")
+    call("set_track_pan", track_index=0, pan=0.5)
+    call("undo")
     result = call("remove_fx", track_index=0, fx_index=2)
     assert result["success"] is False
     # The reaper fixture also checks the block and the UI-refresh hold were closed.
-    assert _steps(reaper) == ["MCP: Remove fx (track_index=0, fx_index=2) (failed)"]
-    undone = call("undo")
-    assert undone["undone"] == "MCP: Remove fx (track_index=0, fx_index=2) (failed)"
-    assert "failed" in undone["note"]
+    assert _steps(reaper) == []
+    assert reaper.redo_steps
 
 
-def test_a_tool_reporting_failure_names_the_step_failed(reaper, call):
+def test_a_tool_reporting_failure_before_any_change_leaves_no_step(reaper, call):
     reaper.add_track("Vox")
     result = call("create_bus", name="Bus", track_indices=[0, 0])
     assert result["success"] is False
-    assert _steps(reaper) == ["MCP: Create bus (name=Bus, track_indices=[0, 0]) (failed)"]
+    assert _steps(reaper) == []
+
+
+def test_a_block_failing_after_a_change_names_the_step_failed(reaper, call):
+    from reaper_mcp.undo import undo_block
+
+    reaper.add_track("Vox")
+    with pytest.raises(RuntimeError), undo_block("Half done"):
+        reaper.tracks[0].info["B_MUTE"] = 1.0
+        raise RuntimeError("failed half-way")
+    assert _steps(reaper) == ["MCP: Half done (failed)"]
+    undone = call("undo")
+    assert undone["undone"] == "MCP: Half done (failed)"
+    assert "failed" in undone["note"]
+    assert reaper.tracks[0].info["B_MUTE"] == 0.0
 
 
 def test_long_arguments_are_shortened_in_the_step_name(reaper, call, tmp_path):
@@ -188,9 +228,11 @@ def test_get_undo_state_reads_an_empty_string_as_null(reaper, call, monkeypatch)
 def test_undo_refuses_a_step_made_by_hand(reaper, call):
     """REAPER's own steps (a recording, a hand edit) are only undone when asked."""
     reaper.add_track("Vox")
+    reaper.control("HOLD")  # as REAPER itself would: within one pass of its loop
     reaper.Undo_BeginBlock2(0)
     reaper.tracks[0].info["B_MUTE"] = 1.0
     reaper.Undo_EndBlock2(0, "Recorded media", -1)
+    reaper.control("RELEASE")
     result = call("undo")
     assert result["success"] is False
     assert "'Recorded media'" in result["error"] and "include_manual_steps" in result["error"]

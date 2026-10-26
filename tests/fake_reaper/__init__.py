@@ -23,7 +23,10 @@ from tests.fake_reaper.signatures import checked
 def install(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakeReaper:
     fake = FakeReaper(tmp_path)
     monkeypatch.setattr(reapy, "connect", lambda *a, **k: None)
-    monkeypatch.setattr(reaper_module, "_connect_to_bridge", lambda: fake.bridge_instance)
+    monkeypatch.setattr(reaper_module, "_connect_to_bridge", fake.connect)
+    # HOLD / RELEASE go over the bridge under their own names, like reapy's.
+    monkeypatch.setattr(reaper_module, "_control", lambda command: reaper_module.guarded(
+        command, lambda: fake.deliver(command, fake.control, (command,))))
     monkeypatch.setattr(reapy, "Project", lambda *a, **k: fake.project)
     for name in RPR_FUNCTIONS:
         function = _over_bridge(fake, name, checked(name, getattr(fake, name)))

@@ -27,8 +27,10 @@ from reaper_mcp.reaper import (
     RPR,
     OutcomeUncertain,
     ensure_connected,
+    hold_main_loop,
     lost_call,
     owe_on_reconnect,
+    release_main_loop,
 )
 
 # Undo_EndBlock2's extraflags: -1 records every kind of state (UNDO_STATE_ALL).
@@ -105,15 +107,23 @@ def undo_block(description: str) -> Iterator[None]:
     If a call to REAPER is lost anywhere (opening the block, inside it or
     closing it), the closing calls still owed are run at the next tool call
     that reaches the same REAPER, so the block is not left open with the UI
-    frozen. An opening call counts as made once sent: REAPER may have run it."""
+    frozen. An opening call counts as made once sent: REAPER may have run it.
+
+    The outermost block holds REAPER's main loop (hold_main_loop) from before
+    it opens until after it closes: REAPER only records a block that opens
+    and closes in one pass of the loop."""
     ensure_connected()
     lost = lost_call()
     if lost is not None:
         raise lost
+    outermost = not _open_blocks
     _open_blocks.append(UNDO_PREFIX + description)
     opened: list[str] = []
     ok = False
     try:
+        if outermost:
+            opened.append("hold")
+            hold_main_loop()
         opened.append("block")
         RPR.Undo_BeginBlock2(0)
         opened.append("refresh")
@@ -125,6 +135,18 @@ def undo_block(description: str) -> Iterator[None]:
         if (lost_call() is not None or not ok) and not name.endswith(FAILED_SUFFIX):
             name += FAILED_SUFFIX
         _run_or_owe(_closing_calls(name, opened))
+        if "hold" in opened:
+            _release()
+
+
+def _release() -> None:
+    """End the hold, unless the connection (and with it the hold) was lost."""
+    if lost_call() is not None:
+        return
+    try:
+        release_main_loop()
+    except OutcomeUncertain:
+        pass  # the connection is dropped, which ends the hold too
 
 
 def _closing_calls(name: str, opened: list[str]) -> list[Callable[[], object]]:

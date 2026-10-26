@@ -27,8 +27,14 @@ oldest is closed to make room. A client that sends an oversized or malformed
 request, stalls mid-request or stops reading replies is disconnected; the
 loop itself always reschedules, so one bad connection cannot stop the bridge.
 A local program without the token cannot drive REAPER, but it can still
-keep the port busy; an authenticated client can hold REAPER's main loop
-through reapy's HOLD request, as with stock reapy.
+keep the port busy.
+
+An authenticated client can hold REAPER's main loop through reapy's HOLD
+request: its requests then all run in one pass of the loop until it sends
+RELEASE. The server holds it for each undo block, because REAPER ends an
+undo block (and records any change as its own "ReaScript: Run" step) at the
+end of every pass. A held client that goes quiet for HOLD_IDLE_SECONDS is
+disconnected, so a stalled or crashed client cannot freeze REAPER.
 
 It runs inside REAPER (reaper-mcp-setup installs a launcher and starts it
 from __startup.lua); the MCP server imports only its constants and the
@@ -62,6 +68,10 @@ GREETING_PREFIX = "reaper-mcp-bridge/2"
 NONCE_BYTES = 32
 PROOF_BYTES = hashlib.sha256().digest_size
 AUTH_BYTES = NONCE_BYTES + PROOF_BYTES  # the client's nonce and proof
+# A held client (see the module docstring) that sends nothing for this long
+# is disconnected and REAPER's main loop goes on.
+HOLD_IDLE_SECONDS = 20.0
+HOLD, RELEASE = "HOLD", "RELEASE"
 MAX_PENDING_CONNECTIONS = 16  # connected but not authenticated yet
 _TIMEOUTS = (socket.timeout, TimeoutError)  # distinct before Python 3.10
 
@@ -237,6 +247,45 @@ class LocalServer(Server):
             return {"function": self.disconnect,
                     "input": {"args": (address,), "kwargs": {}}}
 
+    def _hold_connection(self, address):
+        """Serve only this client, inside this pass of REAPER's main loop,
+        until it sends RELEASE, disconnects or stays quiet for
+        HOLD_IDLE_SECONDS. Returns RELEASE's answer, or None when the
+        client is gone."""
+        connection = self.connections.get(address)
+        if connection is None:
+            return None
+        try:
+            self._send_result(connection, {"type": "result", "value": None})
+        except OSError:
+            self.disconnect(address)
+            return None
+        deadline = time.monotonic() + HOLD_IDLE_SECONDS
+        while address in self.connections:
+            request = self._get_request(connection, address)
+            if request is None:
+                if time.monotonic() > deadline:
+                    self.disconnect(address)
+                    return None
+                continue
+            if request["function"] == RELEASE:
+                return {"type": "result", "value": None}
+            try:
+                result = self._process_request(request, address)
+            except Exception:  # a malformed request: drop the client, end the hold
+                traceback.print_exc()
+                self.disconnect(address)
+                return None
+            if address not in self.connections:  # it asked to disconnect, or was dropped
+                return None
+            try:
+                self._send_result(connection, result)
+            except OSError:
+                self.disconnect(address)
+                return None
+            deadline = time.monotonic() + HOLD_IDLE_SECONDS
+        return None
+
     def disconnect(self, address):
         connection = self.connections.pop(address, None)
         if connection is not None:
@@ -245,7 +294,7 @@ class LocalServer(Server):
     def send_results(self, results):
         for address, result in results.items():
             connection = self.connections.get(address)
-            if connection is None:
+            if connection is None or result is None:
                 continue
             try:
                 self._send_result(connection, result)
